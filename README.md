@@ -183,41 +183,6 @@ nido-smarthome/
 Repositorio:
 
 ```text
-https://github.com/USUARIO/nido-smarthome
+https://github.com/AlejandroPedrosa/Nido-SmartHome
 ```
 
----
-
-# Plan de Trabajo
-
-| Semana | Objetivo                                      |
-| ------ | --------------------------------------------- |
-| 1      | Setup, arquitectura, Supabase y autenticación |
-| 2      | Productos, contenedores, stock y movimientos  |
-| 3      | Dashboard e interfaz de gestión               |
-| 4      | Recetas y lista automática de compras         |
-| 5      | Integración inicial del chatbot               |
-| 6      | IA, búsqueda semántica y pgvector             |
-| 7      | Testing, documentación y despliegue           |
-
-Duración estimada del MVP: **7 semanas**.
-
----
-
-# Funcionalidades Opcionales
-
-Si los tiempos del proyecto lo permiten, podrán incorporarse:
-
-* Carga de productos mediante fotografía de tickets.
-* OCR con Tesseract.js.
-* Procesamiento mediante OpenAI Vision.
-* Monitoreo con Sentry.
-* Logs y monitoreo con AWS CloudWatch.
-
-Estas funcionalidades no condicionan la entrega del MVP.
-
----
-
-# Estado
-
-**NIDO SmartHome MVP — En planificación / desarrollo inicial.**
