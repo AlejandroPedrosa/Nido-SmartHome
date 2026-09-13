@@ -35,7 +35,7 @@ El usuario podrá saber:
 
 ### Dentro del Alcance (Funcionalidades del MVP)
 
-* **Gestión de productos y stock:**
+**Gestión de productos y stock:**
 * CRUD completo de productos (crear, editar, listar y eliminar).
 * Registro y actualización de stock actual.
 * Definición de unidad de medida y presentación habitual de compra.
@@ -51,11 +51,11 @@ Presentación: paquete de 500 g
 Stock mínimo: 1 paquete
 ```
 
-* **Contenedores / espacios:**
+**Contenedores / espacios:**
 * Organización lógica del inventario por sectores del hogar (Cocina, Heladera, Freezer, Alacena, Baño, Lavadero).
 * Visualización y filtrado de productos según su espacio asignado.
 
-* **Lista de compras automática:**
+**Lista de compras automática:**
 * Generación dinámica de la lista de reposición basada en productos cuyo stock esté por debajo del mínimo establecido.
 
 Ejemplo:
@@ -66,22 +66,22 @@ Ejemplo:
 - 1 docena de huevos
 ```
 
-* **Recetas e integración:**
+**Recetas e integración:**
 * Registro de recetas, relación de ingredientes con los productos del inventario y descuento automático de insumos al registrar la preparación del plato.
 
-* **Autenticación y gestión de usuarios:**
+**Autenticación y gestión de usuarios:**
 * Registro e inicio de sesión de usuario para aislar su inventario personal.
 
 
 ### Fuera del Alcance (Mejoras futuras)
 Para asegurar la estabilidad, el cumplimiento del cronograma y la solidez de la lógica de negocio base, las siguientes funcionalidades quedan excluidas del MVP y se definen como la hoja de ruta futura:
 
-* **Asistente virtual (Chatbot):**
+**Asistente virtual (Chatbot):**
 * No se implementará: Interfaz conversacional para consultar stock, registrar compras/consumos o pedir sugerencias mediante lenguaje natural. (API)
 
 * Motivo: El MVP priorizará una interfaz gráfica (UI/UX) intuitiva y rápida. Toda la gestión se realizará mediante formularios y paneles visuales antes de incorporar la capa de lenguaje natural.
 
-* **Notificaciones externas vía WhatsApp (Alertas de stock bajo):**
+**Notificaciones externas vía WhatsApp (Alertas de stock bajo):**
 * No se implementará: Envío automático de mensajes o alertas por Whatsapp al usuario avisando sobre productos que están por acabarse o por debajo del stock mínimo.
 
 * Motivo: Requiere integración y costos asociados a proveedores de mensajería y tareas programadas de despacho. En el MVP, las alertas de reposición se gestionarán exclusivamente dentro de la app mediante indicadores visuales en el panel y la lista de compras automática.
