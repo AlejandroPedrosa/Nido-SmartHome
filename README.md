@@ -2,9 +2,9 @@
 
 ## Grupo303
 
-Alejandro Pedrosa
-Luciano de la Rubia 
-Fancisco Lopez
+* Alejandro Pedrosa
+* Luciano de la Rubia 
+* Fancisco Lopez
 
 ## Gestor Inteligente de Inventario del Hogar
 
