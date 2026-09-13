@@ -4,7 +4,7 @@
 
 * Alejandro Pedrosa
 * Luciano de la Rubia 
-* Fancisco Lopez
+* Francisco Lopez
 
 ## Gestor Inteligente de Inventario del Hogar
 
@@ -31,15 +31,16 @@ El usuario podrá saber:
 
 ---
 
-## Funcionalidades del MVP
+## Alcance del Proyecto (Scope)
 
-### Gestión de productos
+### Dentro del Alcance (Funcionalidades del MVP)
 
-* Crear, editar y eliminar productos.
-* Registrar stock actual.
-* Definir unidad de medida.
-* Configurar stock mínimo.
-* Definir presentación habitual de compra.
+* **Gestión de productos y stock:**
+* CRUD completo de productos (crear, editar, listar y eliminar).
+* Registro y actualización de stock actual.
+* Definición de unidad de medida y presentación habitual de compra.
+* Configuración de stock mínimo de alerta por producto.
+* Registro de entradas (compras) y salidas (consumos) de stock.
 
 Ejemplo:
 
@@ -50,24 +51,12 @@ Presentación: paquete de 500 g
 Stock mínimo: 1 paquete
 ```
 
-### Contenedores
+* **Contenedores / espacios:**
+* Organización lógica del inventario por sectores del hogar (Cocina, Heladera, Freezer, Alacena, Baño, Lavadero).
+* Visualización y filtrado de productos según su espacio asignado.
 
-Los productos podrán organizarse en diferentes espacios del hogar, por ejemplo:
-
-* Cocina.
-* Heladera.
-* Freezer.
-* Alacena.
-* Baño.
-* Lavadero.
-
-### Control de stock
-
-El sistema registrará entradas y salidas del inventario y detectará automáticamente productos cuyo stock esté por debajo del mínimo configurado.
-
-### Lista de compras
-
-NIDO SmartHome podrá generar automáticamente una lista de productos que necesitan reposición.
+* **Lista de compras automática:**
+* Generación dinámica de la lista de reposición basada en productos cuyo stock esté por debajo del mínimo establecido.
 
 Ejemplo:
 
@@ -77,33 +66,25 @@ Ejemplo:
 - 1 docena de huevos
 ```
 
-### Recetas
+* **Recetas e integración:**
+* Registro de recetas, relación de ingredientes con los productos del inventario y descuento automático de insumos al registrar la preparación del plato.
 
-El usuario podrá registrar recetas y relacionar sus ingredientes con los productos del inventario.
+* **Autenticación y gestión de usuarios:**
+* Registro e inicio de sesión de usuario para aislar su inventario personal.
 
-Al consumir una receta, el sistema podrá descontar automáticamente los ingredientes utilizados.
 
-### Chatbot con Inteligencia Artificial
+### Fuera del Alcance (Mejoras futuras)
+Para asegurar la estabilidad, el cumplimiento del cronograma y la solidez de la lógica de negocio base, las siguientes funcionalidades quedan excluidas del MVP y se definen como la hoja de ruta futura:
 
-El asistente permitirá realizar acciones mediante lenguaje natural.
+* **Asistente virtual (Chatbot):**
+* No se implementará: Interfaz conversacional para consultar stock, registrar compras/consumos o pedir sugerencias mediante lenguaje natural. (API)
 
-Ejemplos:
+* Motivo: El MVP priorizará una interfaz gráfica (UI/UX) intuitiva y rápida. Toda la gestión se realizará mediante formularios y paneles visuales antes de incorporar la capa de lenguaje natural.
 
-```text
-¿Cuántos huevos quedan?
+* **Notificaciones externas vía WhatsApp (Alertas de stock bajo):**
+* No se implementará: Envío automático de mensajes o alertas por Whatsapp al usuario avisando sobre productos que están por acabarse o por debajo del stock mínimo.
 
-Compré 12 huevos y 2 litros de leche.
-
-Usé 200 gramos de carne.
-
-Acabo de comer un omelette.
-
-¿Qué puedo cocinar con lo que tengo?
-
-Generame la lista de compras.
-```
-
-La IA interpretará la solicitud y el backend será responsable de validar y ejecutar las acciones correspondientes.
+* Motivo: Requiere integración y costos asociados a proveedores de mensajería y tareas programadas de despacho. En el MVP, las alertas de reposición se gestionarán exclusivamente dentro de la app mediante indicadores visuales en el panel y la lista de compras automática.
 
 ---
 
