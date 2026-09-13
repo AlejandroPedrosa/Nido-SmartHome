@@ -1,5 +1,11 @@
 # NIDO SmartHome
 
+## Grupo303
+
+Alejandro Pedrosa
+Luciano de la Rubia 
+Fancisco Lopez
+
 ## Gestor Inteligente de Inventario del Hogar
 
 **NIDO SmartHome** es una aplicación web para gestionar de forma inteligente el inventario de productos del hogar.
