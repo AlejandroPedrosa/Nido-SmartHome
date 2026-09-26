@@ -1,6 +1,6 @@
 # NIDO SmartHome
 
-## Grupo303
+## Grupo 303
 
 * Alejandro Pedrosa
 * Luciano de la Rubia 
@@ -8,26 +8,26 @@
 
 ## Gestor Inteligente de Inventario del Hogar
 
-**NIDO SmartHome** es una aplicación web para gestionar de forma inteligente el inventario de productos del hogar.
+**NIDO SmartHome** es una aplicación web diseñada para centralizar y simplificar el control de existencias y la reposición de productos del hogar.
 
-El sistema permitirá registrar productos, controlar su stock, organizarlos en diferentes espacios del hogar y establecer niveles mínimos de reposición. Además, incorporará un asistente basado en Inteligencia Artificial que permitirá interactuar con el inventario mediante lenguaje natural.
+El sistema permite registrar productos en su unidad de medida real, controlar el stock de forma atómica, organizarlos en contenedores físicos del hogar, disparar alertas visuales de reposición, generar listas de compras automáticas y gestionar recetas culinarias con descuento directo de inventario.
 
-El proyecto será desarrollado inicialmente como un **Producto Mínimo Viable (MVP)**.
+El proyecto se desarrolla inicialmente como un **Producto Mínimo Viable (MVP)** centrado en la robustez de la lógica de negocio, consistencia transaccional y diseño adaptable.
 
 ---
 
 ## Objetivo
 
-Centralizar y simplificar el control de los productos disponibles dentro de un hogar.
+Centralizar y optimizar la administración de insumos dentro del hogar.
 
-El usuario podrá saber:
+El usuario podrá conocer en todo momento:
 
-* Qué productos tiene.
-* Dónde están almacenados.
-* Cuánto stock queda.
-* Qué productos necesitan reposición.
-* Qué necesita comprar.
-* Qué comidas puede preparar con el inventario disponible.
+* Qué productos tiene registrados.
+* En qué contenedor físico están almacenados.
+* Cuánto stock disponible queda en la unidad correspondiente.
+* Qué productos alcanzaron o perforaron el stock mínimo.
+* Qué artículos necesita comprar para reponer faltantes.
+* Qué recetas puede preparar de inmediato con los ingredientes disponibles.
 
 ---
 
@@ -36,149 +36,141 @@ El usuario podrá saber:
 ### Dentro del Alcance (Funcionalidades del MVP)
 
 **Gestión de productos y stock:**
-* CRUD completo de productos (crear, editar, listar y eliminar).
-* Registro y actualización de stock actual.
-* Definición de unidad de medida estándar (g, kg, ml, l, unidad, paquete, botella).
-* Configuración de stock mínimo de alerta por producto.
-* Registro de entradas (compras) y salidas (consumos) de stock.
+* CRUD completo de productos (crear, editar metadatos, listar y eliminar).
+* Registro y actualización de existencias en tiempo real.
+* Unidades de medida homogéneas (`g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella`).
+* Configuración de umbral de stock mínimo (`min_stock`) y cantidad sugerida de reposición (`reorder_quantity`).
+* Historial inmutable de auditoría para cada entrada, salida o ajuste manual de inventario.
 
 Ejemplo:
-
 ```text
-Fideos
+Fideos Tallarines
 Stock actual: 750 g
-Presentación: paquete de 500 g
-Stock mínimo: 1 paquete
+Stock mínimo: 500 g
+Contenedor: Alacena
+Estado: OK
 ```
 
-**Contenedores / espacios:**
-* Organización lógica del inventario por sectores del hogar (Cocina, Heladera, Freezer, Alacena, Baño, Lavadero).
-* Visualización y filtrado de productos según su espacio asignado.
+**Contenedores / espacios del hogar:**
+* Organización lógica del inventario por sectores físicos (Cocina, Heladera, Freezer, Alacena, Baño, Lavadero).
+* Asignación flexible (muchos a muchos) y filtrado de productos por espacio asignado.
 
 **Lista de compras automática:**
-* Generación dinámica de la lista de reposición basada en productos cuyo stock esté por debajo del mínimo establecido.
+* Generación consolidada de la lista activa basada en productos con `current_stock < min_stock`.
+* Cálculo de cantidad sugerida a comprar.
+* Casillas de verificación para marcar artículos comprados en el supermercado.
+* Confirmación y liquidación atómica: incrementa el stock únicamente de los artículos adquiridos y archiva la lista.
 
-Ejemplo:
+**Recetas y cocina:**
+* Catálogo de recetas propias vinculadas a ingredientes del inventario con cantidades específicas.
+* Cálculo en tiempo real de recetas disponibles para cocinar según existencias actuales.
+* Preparación transaccional: descuento atómico de todos los insumos requeridos bajo control estricto de concurrencia (`FOR UPDATE`) y auditoría automática de consumo.
 
-```text
-- 1 paquete de fideos de 500 g
-- 1 botella de aceite de 1 L
-- 1 docena de huevos
-```
-
-**Recetas e integración:**
-* Registro de recetas, relación de ingredientes con los productos del inventario y descuento automático de insumos al registrar la preparación del plato.
-
-**Autenticación y gestión de usuarios:**
-* Registro e inicio de sesión de usuario para aislar su inventario personal.
-
-
-### Fuera del Alcance (Mejoras futuras)
-Para asegurar la estabilidad, el cumplimiento del cronograma y la solidez de la lógica de negocio base, las siguientes funcionalidades quedan excluidas del MVP y se definen como la hoja de ruta futura:
-
-**Asistente virtual (Chatbot):**
-* No se implementará: Interfaz conversacional para consultar stock, registrar compras/consumos o pedir sugerencias mediante lenguaje natural. (API)
-
-* Motivo: El MVP priorizará una interfaz gráfica (UI/UX) intuitiva y rápida. Toda la gestión se realizará mediante formularios y paneles visuales antes de incorporar la capa de lenguaje natural.
-
-**Notificaciones externas vía WhatsApp (Alertas de stock bajo):**
-* No se implementará: Envío automático de mensajes o alertas por Whatsapp al usuario avisando sobre productos que están por acabarse o por debajo del stock mínimo.
-
-* Motivo: Requiere integración y costos asociados a proveedores de mensajería y tareas programadas de despacho. En el MVP, las alertas de reposición se gestionarán exclusivamente dentro de la app mediante indicadores visuales en el panel y la lista de compras automática.
+**Autenticación y aislamiento multi-inquilino:**
+* Registro e inicio de sesión seguro mediante Supabase Auth (JWT).
+* Aislamiento estricto de datos por `user_id` en todas las consultas y mutaciones.
+* Protección de rutas públicas y privadas en el cliente web.
 
 ---
 
-# Stack Tecnológico
+### Fuera del Alcance (Mejoras futuras)
+
+Para asegurar la estabilidad, el cumplimiento del cronograma académico y la solidez de la arquitectura base, las siguientes tecnologías y funcionalidades quedan formalmente excluidas del MVP:
+
+**Asistente conversacional con Inteligencia Artificial:**
+* *No incluido en el MVP:* Integración con OpenAI API (LLMs), Tool / Function Calling y Embeddings vectoriales para consultas en lenguaje natural.
+* *Justificación:* El MVP prioriza una interfaz gráfica (UI/UX) accesible, rápida y estructurada antes de incorporar interfaces conversacionales no deterministas.
+
+**Búsqueda semántica y base de datos vectorial:**
+* *No incluido en el MVP:* Extensión `pgvector` en PostgreSQL y almacenamiento de embeddings de productos o recetas.
+* *Justificación:* El volumen de datos de un hogar se resuelve de manera óptima con índices relacionales B-Tree estándar y filtros estructurados por categorías y contenedores.
+
+**Suscripciones en tiempo real:**
+* *No incluido en el MVP:* Supabase Realtime (WebSockets).
+* *Justificación:* La sincronización de estado cliente-servidor se gestiona eficientemente mediante clientes HTTP REST y stores reactivos con Zustand.
+
+**Notificaciones externas push / WhatsApp:**
+* *No incluido en el MVP:* Despacho automatizado de mensajes vía WhatsApp Business API o servicios externos de SMS.
+* *Justificación:* Evita costos operativos y dependencias de pasarelas externas. Las alertas se visualizan en el Dashboard y en la vista de compras de la aplicación web.
+
+---
+
+# Stack Tecnológico (MVP)
 
 ## Frontend
 
-* React 19
-* TypeScript
-* Vite
-* Tailwind CSS
-* shadcn/ui
-* Zustand
+* **Framework:** React 19
+* **Lenguaje:** TypeScript
+* **Tooling:** Vite
+* **Estilos y Componentes:** Tailwind CSS, shadcn/ui, Lucide Icons
+* **Gestión de Estado:** Zustand
 
 ## Backend
 
-* Node.js
-* NestJS
-* TypeScript
+* **Entorno de ejecución:** Node.js
+* **Framework:** NestJS
+* **Lenguaje:** TypeScript
+* **Conectores y Persistencia:** Cliente Supabase (Auth) y Pool de conexiones Node-Postgres (`pg`) para transacciones ACID
 
-## Base de Datos y Servicios
+## Base de Datos y Autenticación
 
-* PostgreSQL
-* Supabase Database
-* Supabase Auth
-* Supabase Realtime
-* Supabase pgvector
+* **Motor:** PostgreSQL (vía Supabase Cloud)
+* **Gestión de Identidad:** Supabase Auth (JWT y Refresh Tokens)
 
-## Inteligencia Artificial
+## Infraestructura y DevOps
 
-* OpenAI API
-* Tool / Function Calling
-* Embeddings para búsqueda semántica
-
-## Infraestructura
-
-* Vercel — Frontend
-* AWS EC2 — Backend
-* Supabase Cloud — Base de datos
-* GitHub Actions — CI/CD
+* **Frontend Hosting:** Vercel
+* **Backend Hosting:** AWS EC2
+* **Base de datos:** Supabase Cloud
+* **CI/CD:** GitHub Actions (Pipelines automatizados de linting, testing y build)
 
 ---
 
 # Arquitectura
 
+El sistema implementa una arquitectura desacoplada cliente-servidor comunicada mediante API REST stateless sobre HTTPS:
+
 ```text
-Usuario
-   │
-   ▼
-React + TypeScript
-   │
-   ▼
-NestJS API
-   │
-   ├──────────────► OpenAI API
-   │
-   ▼
-Supabase
-PostgreSQL
-Auth
-Realtime
-pgvector
+Usuario (Navegador Web / Mobile)
+       │
+       ▼
+React 19 + Zustand (Vercel)
+       │
+       │ HTTP / REST (Bearer JWT)
+       ▼
+NestJS API REST (AWS EC2)
+       │
+       ├──────────────────────────┐
+       ▼                          ▼
+Supabase Auth              PostgreSQL Relacional
+(Validación de identidad)  (Pool pg - Transacciones ACID)
 ```
 
 ---
 
 # Repositorio
 
-Todo el proyecto se alojará en un **único repositorio de GitHub** utilizando una estructura de monorepositorio.
+El proyecto se gestiona como un monorepositorio estructurado:
 
 ```text
 nido-smarthome/
-│
 ├── apps/
-│   ├── frontend/
-│   └── backend/
-│
-├── docs/
-├── .github/workflows/
+│   ├── frontend/          # Código fuente React + Vite
+│   └── backend/           # Código fuente NestJS API
+├── docs/                  # Especificación de arquitectura y diseño
+│   └── database/          # Script ejecutable schema.sql
+├── .github/workflows/     # Automatización CI/CD
 └── README.md
 ```
 
-Repositorio:
-
-```text
-https://github.com/AlejandroPedrosa/Nido-SmartHome
-```
+* **URL del Repositorio:** [https://github.com/AlejandroPedrosa/Nido-SmartHome](https://github.com/AlejandroPedrosa/Nido-SmartHome)
 
 ---
 
 # Documentación
 
-* [Base de datos](docs/base-de-datos.md)
-* [Requerimientos](docs/requerimientos.md)
-* [Módulos](docs/modulos.md)
-* [Wireframes](docs/wireframes.md)
-
+* [Requerimientos del Sistema](docs/requerimientos.md)
+* [Diseño de Base de Datos](docs/base-de-datos.md)
+* [Script DDL (schema.sql)](docs/database/schema.sql)
+* [Módulos y Arquitectura](docs/modulos.md)
+* [Wireframes y Diseño de UI](docs/wireframes.md)
