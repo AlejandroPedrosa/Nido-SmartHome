@@ -38,7 +38,7 @@ El usuario podrá saber:
 **Gestión de productos y stock:**
 * CRUD completo de productos (crear, editar, listar y eliminar).
 * Registro y actualización de stock actual.
-* Definición de unidad de medida y presentación habitual de compra.
+* Definición de unidad de medida estándar (g, kg, ml, l, unidad, paquete, botella).
 * Configuración de stock mínimo de alerta por producto.
 * Registro de entradas (compras) y salidas (consumos) de stock.
 
@@ -178,5 +178,6 @@ https://github.com/AlejandroPedrosa/Nido-SmartHome
 # Documentación
 
 * [Base de datos](docs/base-de-datos.md)
+* [Requerimientos](docs/requerimientos.md)
 * [Módulos](docs/modulos.md)
 
