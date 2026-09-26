@@ -371,6 +371,42 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 
 ## 6. Arquitectura
 
+### 6.1 Diagrama de Casos de Uso
+
+Representa los flujos principales del sistema interactuando con el actor principal (`Usuario`). Las operaciones compuestas de cocción y confirmación de compras incluyen internamente la mutación de auditoría y ajuste de inventario.
+
+```mermaid
+graph LR
+    User((Usuario))
+
+    subgraph NIDO_SmartHome ["NIDO SmartHome (Sistema)"]
+        CU01["CU-01: Registrarse"]
+        CU02["CU-02: Iniciar sesión"]
+        CU03["CU-03: Gestionar productos"]
+        CU04["CU-04: Ajustar stock manualmente"]
+        CU05["CU-05: Gestionar contenedores"]
+        CU06["CU-06: Gestionar recetas"]
+        CU07["CU-07: Cocinar receta"]
+        CU08["CU-08: Generar lista de compras"]
+        CU09["CU-09: Confirmar compra"]
+
+        CU07 -.->|<<include>>| CU04
+        CU09 -.->|<<include>>| CU04
+    end
+
+    User --> CU01
+    User --> CU02
+    User --> CU03
+    User --> CU04
+    User --> CU05
+    User --> CU06
+    User --> CU07
+    User --> CU08
+    User --> CU09
+```
+
+### 6.2 Diagrama de Componentes y Despliegue
+
 ```mermaid
 graph TB
     subgraph cliente [Cliente]
@@ -382,26 +418,26 @@ graph TB
         React[React 19 + TypeScript]
         Vite[Vite]
         Tailwind[Tailwind CSS + shadcn/ui]
-        Zustand[Zustand]
+        Zustand[Zustand Stores]
     end
 
     subgraph backend [Backend - AWS EC2]
-        NestJS[NestJS API]
-        AuthModule[Auth]
-        ProductsModule[Products]
-        ContainersModule[Containers]
-        RecipesModule[Recipes]
-        InventoryModule[Inventory]
-        ShoppingModule[Shopping]
+        NestJS[NestJS API REST]
+        AuthModule[Auth Module]
+        ProductsModule[Products Module]
+        ContainersModule[Containers Module]
+        RecipesModule[Recipes Module]
+        InventoryModule[Inventory Module]
+        ShoppingModule[Shopping Module]
     end
 
     subgraph supabase [Supabase Cloud]
         SupabaseAuth[Supabase Auth]
-        PostgreSQL[(PostgreSQL)]
+        PostgreSQL[(PostgreSQL Relacional)]
     end
 
     subgraph cicd [CI/CD]
-        GitHub[GitHub Actions]
+        GitHubActions[GitHub Actions]
     end
 
     User --> Browser
@@ -409,7 +445,7 @@ graph TB
     React --> Vite
     React --> Tailwind
     React --> Zustand
-    React -->|HTTP/REST con JWT| NestJS
+    React -->|HTTP/REST con Bearer JWT| NestJS
 
     NestJS --> AuthModule
     NestJS --> ProductsModule
@@ -418,15 +454,15 @@ graph TB
     NestJS --> InventoryModule
     NestJS --> ShoppingModule
 
-    AuthModule --> SupabaseAuth
-    ProductsModule --> PostgreSQL
-    ContainersModule --> PostgreSQL
-    RecipesModule --> PostgreSQL
-    InventoryModule -->|Transacciones ACID| PostgreSQL
-    ShoppingModule -->|Transacciones ACID| PostgreSQL
+    AuthModule -->|Validación / Tokens| SupabaseAuth
+    ProductsModule -->|Consultas SQL| PostgreSQL
+    ContainersModule -->|Consultas SQL| PostgreSQL
+    RecipesModule -->|Consultas SQL| PostgreSQL
+    InventoryModule -->|Transacciones ACID (pg)| PostgreSQL
+    ShoppingModule -->|Transacciones ACID (pg)| PostgreSQL
 
-    GitHub -->|Deploy frontend| VercelDeploy[Vercel]
-    GitHub -->|Deploy backend| EC2[EC2]
+    GitHubActions -->|Deploy automático| React
+    GitHubActions -->|Deploy automático| NestJS
 ```
 
 | Capa | Tecnología | Responsabilidad |
