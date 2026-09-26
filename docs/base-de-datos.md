@@ -1,8 +1,8 @@
 # NIDO SmartHome — Base de datos
 
-> **Grupo 303**: Alejandro Pedrosa, Luciano de la Rubia, Francisco Lopez
-> **Proyecto**: Trabajo Final — UTN
-> **Tipo**: Producto Mínimo Viable (MVP)
+> **Grupo 303**: Alejandro Pedrosa, Luciano de la Rubia, Francisco Lopez  
+> **Proyecto**: Trabajo Final — UTN  
+> **Tipo**: Producto Mínimo Viable (MVP)  
 > **Motor**: PostgreSQL (Supabase)
 
 El comportamiento de la API, las pantallas y las reglas de negocio están en [Módulos](modulos.md).
@@ -17,7 +17,7 @@ El comportamiento de la API, las pantallas y las reglas de negocio están en [M�
 4. [Relaciones](#4-relaciones)
 5. [Convenciones](#5-convenciones)
 6. [Índices recomendados](#6-índices-recomendados)
-7. [Observaciones](#7-observaciones)
+7. [Decisiones de diseño tomadas](#7-decisiones-de-diseño-tomadas)
 
 ---
 
@@ -35,11 +35,12 @@ CREATE TABLE products (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   category TEXT,
-  unit VARCHAR(20) DEFAULT 'unidad', -- 'gr', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'
-  current_stock DECIMAL(10, 2) DEFAULT 0,
-  min_stock DECIMAL(10, 2) DEFAULT 0,
-  reorder_quantity DECIMAL(10, 2) NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  unit VARCHAR(20) NOT NULL DEFAULT 'unidad' CHECK (unit IN ('g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella')),
+  current_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (current_stock >= 0),
+  min_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
+  reorder_quantity DECIMAL(10, 2) NULL CHECK (reorder_quantity > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_products_user_name UNIQUE (user_id, name)
 );
 
 -- Contenedores / espacios del hogar
@@ -47,13 +48,14 @@ CREATE TABLE containers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)
 );
 
 -- Relación muchos-a-muchos entre productos y contenedores
 CREATE TABLE product_containers (
-  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
-  container_id UUID REFERENCES containers(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  container_id UUID NOT NULL REFERENCES containers(id) ON DELETE CASCADE,
   PRIMARY KEY (product_id, container_id)
 );
 
@@ -63,44 +65,50 @@ CREATE TABLE recipes (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   instructions TEXT,
-  servings INTEGER DEFAULT 1,
-  created_at TIMESTAMP DEFAULT NOW()
+  servings INTEGER NOT NULL DEFAULT 1 CHECK (servings > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)
 );
 
 -- Ingredientes de recetas (relación receta-producto)
 CREATE TABLE recipe_ingredients (
-  recipe_id UUID REFERENCES recipes(id) ON DELETE CASCADE,
-  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
-  quantity DECIMAL(10, 2) NOT NULL,
+  recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  quantity DECIMAL(10, 2) NOT NULL CHECK (quantity > 0),
   PRIMARY KEY (recipe_id, product_id)
 );
 
 -- Movimientos de inventario (auditoría)
 CREATE TABLE inventory_movements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   quantity_change DECIMAL(10, 2) NOT NULL,
-  type VARCHAR(20) NOT NULL, -- 'manual', 'recipe_consumption', 'shopping'
+  type VARCHAR(20) NOT NULL CHECK (type IN ('manual', 'recipe_consumption', 'shopping')),
   reason TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Listas de compras
 CREATE TABLE shopping_lists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  is_purchased BOOLEAN DEFAULT FALSE
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_purchased BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Items de la lista de compras
 CREATE TABLE shopping_list_items (
-  shopping_list_id UUID REFERENCES shopping_lists(id) ON DELETE CASCADE,
-  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
-  suggested_quantity DECIMAL(10, 2) NOT NULL,
-  purchased BOOLEAN DEFAULT FALSE,
+  shopping_list_id UUID NOT NULL REFERENCES shopping_lists(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  suggested_quantity DECIMAL(10, 2) NOT NULL CHECK (suggested_quantity > 0),
+  purchased BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (shopping_list_id, product_id)
 );
+
+-- Garantizar una única lista de compras activa por usuario
+CREATE UNIQUE INDEX shopping_lists_one_active_per_user
+  ON shopping_lists (user_id)
+  WHERE is_purchased = FALSE;
 ```
 
 `auth.users` la administra Supabase Auth. El esquema de la aplicación solo la referencia.
@@ -114,34 +122,38 @@ CREATE TABLE shopping_list_items (
 Almacena cada producto que el usuario gestiona en su hogar. Es la tabla central del sistema.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único del producto |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño del producto |
 | `name` | TEXT | NOT NULL | Nombre del producto (ej: "Fideos") |
 | `category` | TEXT | NULL | Categoría libre (ej: "Alimentos", "Limpieza"). No hay tabla de categorías |
-| `unit` | VARCHAR(20) | DEFAULT `'unidad'` | Unidad de medida: `gr`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
-| `current_stock` | DECIMAL(10,2) | DEFAULT 0 | Stock actual, expresado en `unit` |
-| `min_stock` | DECIMAL(10,2) | DEFAULT 0 | Umbral mínimo para alertas de reposición, en la misma `unit` |
-| `reorder_quantity` | DECIMAL(10,2) | NULL | Cantidad sugerida al reponer. Si es NULL, se usa `min_stock - current_stock` |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Fecha de creación del registro |
+| `unit` | VARCHAR(20) | NOT NULL, DEFAULT `'unidad'`, CHECK | Unidad de medida: `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
+| `current_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Stock actual, expresado en `unit` |
+| `min_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Umbral mínimo para alertas de reposición, en la misma `unit` |
+| `reorder_quantity` | DECIMAL(10,2) | NULL, CHECK (`> 0`) | Cantidad sugerida al reponer. Si es NULL, se usa `min_stock - current_stock` |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación del registro |
+
+Restricción adicional: `CONSTRAINT uq_products_user_name UNIQUE (user_id, name)` impide que un usuario tenga dos productos con el mismo nombre.
 
 ### `containers` — Contenedores / espacios
 
 Espacios físicos del hogar donde se almacenan productos (Cocina, Heladera, Freezer, Alacena, Baño, Lavadero).
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único del contenedor |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño del contenedor |
 | `name` | TEXT | NOT NULL | Nombre del contenedor (ej: "Heladera", "Alacena") |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Fecha de creación |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+
+Restricción adicional: `CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)` impide que un usuario repita el nombre de un contenedor.
 
 ### `product_containers` — Relación producto-contenedor
 
 Tabla pivote muchos-a-muchos: un producto puede estar en varios contenedores y un contenedor puede tener varios productos.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
 | `container_id` | UUID | PK (compuesta), FK → `containers(id)` ON DELETE CASCADE | Referencia al contenedor |
 
@@ -152,13 +164,15 @@ Al borrar un contenedor se borra la fila de esta tabla. El producto sigue existi
 Recetas del usuario. Los ingredientes viven en `recipe_ingredients` y apuntan a productos del inventario.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único de la receta |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la receta |
 | `name` | TEXT | NOT NULL | Nombre de la receta (ej: "Pasta con salsa") |
 | `instructions` | TEXT | NULL | Instrucciones de preparación |
-| `servings` | INTEGER | DEFAULT 1 | Cantidad de porciones que cubren las cantidades de `recipe_ingredients` |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Fecha de creación |
+| `servings` | INTEGER | NOT NULL, DEFAULT 1, CHECK (`> 0`) | Cantidad de porciones que cubren las cantidades de `recipe_ingredients` |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+
+Restricción adicional: `CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)` impide que un usuario registre dos recetas con el mismo nombre.
 
 `servings` es informativo. Cocinar la receta descuenta las cantidades guardadas en `recipe_ingredients`, sin multiplicar por porciones.
 
@@ -167,10 +181,10 @@ Recetas del usuario. Los ingredientes viven en `recipe_ingredients` y apuntan a 
 Vincula una receta con productos del inventario e indica la cantidad necesaria de cada uno, en la unidad del producto.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `recipe_id` | UUID | PK (compuesta), FK → `recipes(id)` ON DELETE CASCADE | Referencia a la receta |
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
-| `quantity` | DECIMAL(10,2) | NOT NULL | Cantidad necesaria del ingrediente |
+| `quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad necesaria del ingrediente |
 
 La clave primaria impide repetir el mismo producto dentro de una receta.
 
@@ -179,13 +193,13 @@ La clave primaria impide repetir el mismo producto dentro de una receta.
 Auditoría de cambios de stock. Cada entrada o salida de `products.current_stock` genera una fila.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único del movimiento |
-| `product_id` | UUID | FK → `products(id)` ON DELETE CASCADE | Producto afectado |
+| `product_id` | UUID | NOT NULL, FK → `products(id)` ON DELETE CASCADE | Producto afectado |
 | `quantity_change` | DECIMAL(10,2) | NOT NULL | Positivo = entrada, negativo = salida |
-| `type` | VARCHAR(20) | NOT NULL | `manual`, `recipe_consumption` o `shopping` |
+| `type` | VARCHAR(20) | NOT NULL, CHECK | `manual`, `recipe_consumption` o `shopping` |
 | `reason` | TEXT | NULL | Motivo opcional |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Fecha del movimiento |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora del movimiento |
 
 No tiene `user_id`. El dueño se obtiene por `products.user_id`. La API no actualiza ni borra estas filas. Si se elimina el producto (o el usuario, que borra sus productos en cascada), el historial de ese producto también se borra.
 
@@ -194,22 +208,22 @@ No tiene `user_id`. El dueño se obtiene por `products.user_id`. La API no actua
 Encabezado de una lista. No tiene nombre: se identifica por fecha de creación.
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único de la lista |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la lista |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Fecha de creación |
-| `is_purchased` | BOOLEAN | DEFAULT FALSE | `true` cuando la compra fue confirmada |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+| `is_purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | `true` cuando la compra fue confirmada |
 
-Como máximo hay una lista activa por usuario (`is_purchased = false`). La generación automática actualiza esa lista en lugar de crear otra. El esquema no impone ese límite: lo valida el backend.
+El índice único parcial `shopping_lists_one_active_per_user` garantiza a nivel de base de datos que exista como máximo una lista activa por usuario (`is_purchased = false`).
 
 ### `shopping_list_items` — Ítems de la lista de compras
 
 | Columna | Tipo | Constraint | Descripción |
-|---------|------|------------|-------------|
+|---|---|---|---|
 | `shopping_list_id` | UUID | PK (compuesta), FK → `shopping_lists(id)` ON DELETE CASCADE | Referencia a la lista |
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
-| `suggested_quantity` | DECIMAL(10,2) | NOT NULL | Cantidad sugerida para comprar, en la unidad del producto |
-| `purchased` | BOOLEAN | DEFAULT FALSE | Ítem marcado como comprado |
+| `suggested_quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad sugerida para comprar, en la unidad del producto |
+| `purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | Ítem marcado como comprado |
 
 ---
 
@@ -243,19 +257,19 @@ erDiagram
         decimal current_stock
         decimal min_stock
         decimal reorder_quantity
-        timestamp created_at
+        timestamptz created_at
     }
 
     containers {
         uuid id PK
         uuid user_id FK
         text name
-        timestamp created_at
+        timestamptz created_at
     }
 
     product_containers {
-        uuid product_id PK
-        uuid container_id PK
+        uuid product_id PK,FK
+        uuid container_id PK,FK
     }
 
     recipes {
@@ -264,12 +278,12 @@ erDiagram
         text name
         text instructions
         integer servings
-        timestamp created_at
+        timestamptz created_at
     }
 
     recipe_ingredients {
-        uuid recipe_id PK
-        uuid product_id PK
+        uuid recipe_id PK,FK
+        uuid product_id PK,FK
         decimal quantity
     }
 
@@ -279,19 +293,19 @@ erDiagram
         decimal quantity_change
         varchar type
         text reason
-        timestamp created_at
+        timestamptz created_at
     }
 
     shopping_lists {
         uuid id PK
         uuid user_id FK
-        timestamp created_at
+        timestamptz created_at
         boolean is_purchased
     }
 
     shopping_list_items {
-        uuid shopping_list_id PK
-        uuid product_id PK
+        uuid shopping_list_id PK,FK
+        uuid product_id PK,FK
         decimal suggested_quantity
         boolean purchased
     }
@@ -302,7 +316,7 @@ erDiagram
 ## 4. Relaciones
 
 | Relación | Tipo | Descripción |
-|----------|------|-------------|
+|---|---|---|
 | `auth.users` → `products` | 1:N | Un usuario tiene muchos productos. Borrar el usuario borra sus productos |
 | `auth.users` → `containers` | 1:N | Un usuario tiene muchos contenedores |
 | `auth.users` → `recipes` | 1:N | Un usuario tiene muchas recetas |
@@ -317,7 +331,7 @@ erDiagram
 ## 5. Convenciones
 
 | Elemento | Convención | Ejemplo |
-|----------|------------|---------|
+|---|---|---|
 | Tablas | snake_case, plural | `products`, `shopping_lists` |
 | Columnas | snake_case | `current_stock`, `user_id` |
 | Claves primarias | `id UUID` con `gen_random_uuid()`, salvo pivotes | `products.id` |
@@ -325,14 +339,15 @@ erDiagram
 | Dueño | `user_id` → `auth.users(id)` en toda tabla que no sea pivote ni movimiento | `containers.user_id` |
 | Cantidades | `DECIMAL(10, 2)`, misma unidad que `products.unit` | `current_stock`, `quantity` |
 | Borrado | `ON DELETE CASCADE` desde el padre | Borrar un producto borra sus ingredientes, movimientos e ítems de compra |
+| Zona horaria | `TIMESTAMPTZ` con valor por defecto `NOW()` en todas las marcas temporales | `products.created_at` |
 
-Estados derivados de stock (no se persisten):
+Estados derivados de stock (no se persisten). Las condiciones son mutuamente excluyentes y se evalúan en orden de precedencia:
 
-| Condición | Estado |
-|-----------|--------|
-| `current_stock >= min_stock` | OK |
-| `0 < current_stock < min_stock` | Bajo mínimo |
-| `current_stock = 0` | Sin stock |
+| Prioridad | Condición | Estado |
+|---|---|---|
+| 1 | `current_stock = 0` | Sin stock |
+| 2 | `current_stock > 0 AND current_stock < min_stock` | Bajo mínimo |
+| 3 | `current_stock > 0 AND current_stock >= min_stock` | OK |
 
 ---
 
@@ -355,24 +370,20 @@ CREATE INDEX product_containers_container_id_idx ON product_containers (containe
 
 ---
 
-## 7. Observaciones
+## 7. Decisiones de diseño tomadas
 
-Estas decisiones quedan afuera del `CREATE TABLE` y las tiene que cubrir el backend, o hay que cambiar el esquema antes de implementar.
+En base a la revisión técnica del diseño de datos previa a la codificación, se formalizaron las siguientes definiciones:
 
-**Aislamiento.** No hay políticas RLS en este script. Cada query de la API filtra por el `user_id` del JWT. Las tablas pivote y `inventory_movements` no tienen `user_id`: al insertar, el backend comprueba que el producto, el contenedor y la receta pertenezcan al mismo usuario.
+**Aislamiento e integridad multi-inquilino.** Cada query de la API filtra por el `user_id` del JWT. Las tablas pivote (`product_containers`, `recipe_ingredients`) y la tabla `inventory_movements` no tienen `user_id`: en la capa de servicios de NestJS (`ContainersService`, `RecipesService`, `InventoryService`) se comprueba que el producto, el contenedor y la receta pertenezcan al mismo usuario autenticado antes de registrar la operación. Si alguno no pertenece al usuario, la API responde HTTP 404 para no revelar la existencia de recursos ajenos.
 
-**Valores permitidos.** `unit` y `inventory_movements.type` no tienen `CHECK`. Los valores válidos están en las reglas [UN-01](modulos.md#36-unidades-de-medida) y [AU-02](modulos.md#37-auditoría-de-movimientos). `current_stock >= 0` tampoco está en la base: lo rechaza la API (regla RS-03).
+**Valores permitidos y restricciones en base.** Se incorporaron restricciones `CHECK` en el script SQL para validar los valores de `unit` (`'g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'`), `inventory_movements.type` (`'manual', 'recipe_consumption', 'shopping'`), y la no negatividad o positividad estricta de existencias y porciones (`current_stock >= 0`, `min_stock >= 0`, `reorder_quantity > 0`, `quantity > 0`, `suggested_quantity > 0`, `servings > 0`).
 
-**Zona horaria.** `created_at` es `TIMESTAMP` (sin zona). En Supabase conviene `TIMESTAMPTZ` para no depender de la zona del servidor.
+**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos.
 
-**Presentación de compra.** El alcance del README describe una presentación habitual (por ejemplo, "paquete de 500 g") distinta de la unidad de stock. Este esquema no tiene esa columna: stock, mínimo, reposición e ingredientes usan siempre `products.unit`.
+**Zona horaria.** Todas las columnas `created_at` usan `TIMESTAMPTZ` para almacenar fecha y hora en UTC, garantizando independencia respecto a la zona horaria del servidor o de los clientes.
 
-**Categorías.** `products.category` es texto libre. No existe un catálogo ni una pantalla de administración de categorías.
+**Unificación de unidades y presentación de compra.** Se descartó el modelado de presentaciones comerciales intermedias para el MVP; todo producto opera en una única unidad de stock (`unit`), estandarizando el uso de `g` en toda la base y documentación.
 
-**Una lista activa.** La regla de no duplicar listas de compras no está en el esquema. Hace falta un índice único parcial, o la validación en el servicio:
+**Categorías.** `products.category` es texto libre para mantener simple la interfaz inicial, sin tabla adicional de catálogo.
 
-```sql
-CREATE UNIQUE INDEX shopping_lists_one_active_per_user
-  ON shopping_lists (user_id)
-  WHERE is_purchased = false;
-```
+**Una lista activa.** La garantía de no duplicar listas de compras abiertas se implementa a nivel relacional mediante el índice único parcial `shopping_lists_one_active_per_user` (`WHERE is_purchased = FALSE`).
