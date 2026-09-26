@@ -12,7 +12,7 @@ Este documento centraliza el diseño visual y la estructura de navegación de la
 
 El diseño completo, pantallas y componentes interactivos se encuentran disponibles en el siguiente enlace:
 
-* **Tablero Figma (Solo Lectura):** [Ver Wireframes de NIDO SmartHome en Figma](https://www.figma.com/design/CnrQJ66WcjTDhUhxjvOgYp/NIDO-SmartHome?node-id=0-1&t=lhWNENJrb5UF4Rd-1)
+* **Tablero Figma:** [Ver Wireframes de NIDO SmartHome en Figma](https://www.figma.com/design/CnrQJ66WcjTDhUhxjvOgYp/NIDO-SmartHome?node-id=0-1&t=lhWNENJrb5UF4Rd-1)
 
 ---
 
