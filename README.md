@@ -180,4 +180,5 @@ https://github.com/AlejandroPedrosa/Nido-SmartHome
 * [Base de datos](docs/base-de-datos.md)
 * [Requerimientos](docs/requerimientos.md)
 * [Módulos](docs/modulos.md)
+* [Wireframes](docs/wireframes.md)
 
