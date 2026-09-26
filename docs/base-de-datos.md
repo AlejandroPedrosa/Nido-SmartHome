@@ -5,7 +5,7 @@
 > **Tipo**: Producto Mínimo Viable (MVP)  
 > **Motor**: PostgreSQL (Supabase)
 
-El comportamiento de la API, las pantallas y las reglas de negocio están en [Módulos](modulos.md).
+El comportamiento de la API, las pantallas y las reglas de negocio están en [Módulos](modulos.md). Los requerimientos formales y la matriz de trazabilidad se encuentran en [Requerimientos](requerimientos.md).
 
 ---
 
@@ -22,6 +22,8 @@ El comportamiento de la API, las pantallas y las reglas de negocio están en [M�
 ---
 
 ## 1. Esquema SQL
+
+> El script DDL ejecutable e independiente para inicializar la base de datos se encuentra en [`docs/database/schema.sql`](database/schema.sql).
 
 ```sql
 -- ============================================================
@@ -73,7 +75,7 @@ CREATE TABLE recipes (
 -- Ingredientes de recetas (relación receta-producto)
 CREATE TABLE recipe_ingredients (
   recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   quantity DECIMAL(10, 2) NOT NULL CHECK (quantity > 0),
   PRIMARY KEY (recipe_id, product_id)
 );
@@ -82,7 +84,7 @@ CREATE TABLE recipe_ingredients (
 CREATE TABLE inventory_movements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  quantity_change DECIMAL(10, 2) NOT NULL,
+  quantity_change DECIMAL(10, 2) NOT NULL CHECK (quantity_change != 0),
   type VARCHAR(20) NOT NULL CHECK (type IN ('manual', 'recipe_consumption', 'shopping')),
   reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -111,7 +113,7 @@ CREATE UNIQUE INDEX shopping_lists_one_active_per_user
   WHERE is_purchased = FALSE;
 ```
 
-`auth.users` la administra Supabase Auth. El esquema de la aplicación solo la referencia.
+`auth.users` la administra Supabase Auth. El esquema de la aplicación solo la referencia mediante foreign keys.
 
 ---
 
@@ -127,11 +129,11 @@ Almacena cada producto que el usuario gestiona en su hogar. Es la tabla central 
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño del producto |
 | `name` | TEXT | NOT NULL | Nombre del producto (ej: "Fideos") |
 | `category` | TEXT | NULL | Categoría libre (ej: "Alimentos", "Limpieza"). No hay tabla de categorías |
-| `unit` | VARCHAR(20) | NOT NULL, DEFAULT `'unidad'`, CHECK | Unidad de medida: `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
+| `unit` | VARCHAR(20) | NOT NULL, DEFAULT `'unidad'`, CHECK | Unidad de medida (ver regla [UN-01](modulos.md#56-unidades-de-medida)): `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
 | `current_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Stock actual, expresado en `unit` |
-| `min_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Umbral mínimo para alertas de reposición, en la misma `unit` |
-| `reorder_quantity` | DECIMAL(10,2) | NULL, CHECK (`> 0`) | Cantidad sugerida al reponer. Si es NULL, se usa `min_stock - current_stock` |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación del registro |
+| `min_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Umbral mínimo para reposición, en la misma `unit` |
+| `reorder_quantity` | DECIMAL(10,2) | NULL, CHECK (`> 0`) | Cantidad fija de reposición. Si es NULL, se usa `min_stock - current_stock` |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación del registro (UTC) |
 
 Restricción adicional: `CONSTRAINT uq_products_user_name UNIQUE (user_id, name)` impide que un usuario tenga dos productos con el mismo nombre.
 
@@ -144,77 +146,77 @@ Espacios físicos del hogar donde se almacenan productos (Cocina, Heladera, Free
 | `id` | UUID | PK, auto-generado | Identificador único del contenedor |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño del contenedor |
 | `name` | TEXT | NOT NULL | Nombre del contenedor (ej: "Heladera", "Alacena") |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación (UTC) |
 
 Restricción adicional: `CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)` impide que un usuario repita el nombre de un contenedor.
 
 ### `product_containers` — Relación producto-contenedor
 
-Tabla pivote muchos-a-muchos: un producto puede estar en varios contenedores y un contenedor puede tener varios productos.
+Tabla pivote muchos-a-muchos: un producto puede estar en varios contenedores y un contenedor puede albergar varios productos.
 
 | Columna | Tipo | Constraint | Descripción |
 |---|---|---|---|
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
 | `container_id` | UUID | PK (compuesta), FK → `containers(id)` ON DELETE CASCADE | Referencia al contenedor |
 
-Al borrar un contenedor se borra la fila de esta tabla. El producto sigue existiendo.
+Al borrar un contenedor se remueve el vínculo en esta tabla. El producto persiste en el inventario.
 
 ### `recipes` — Recetas
 
-Recetas del usuario. Los ingredientes viven en `recipe_ingredients` y apuntan a productos del inventario.
+Recetas culinarias del usuario. Los ingredientes viven en `recipe_ingredients` y apuntan a productos del inventario.
 
 | Columna | Tipo | Constraint | Descripción |
 |---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único de la receta |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la receta |
-| `name` | TEXT | NOT NULL | Nombre de la receta (ej: "Pasta con salsa") |
-| `instructions` | TEXT | NULL | Instrucciones de preparación |
-| `servings` | INTEGER | NOT NULL, DEFAULT 1, CHECK (`> 0`) | Cantidad de porciones que cubren las cantidades de `recipe_ingredients` |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+| `name` | TEXT | NOT NULL | Nombre de la preparación (ej: "Pasta con salsa") |
+| `instructions` | TEXT | NULL | Instrucciones de preparación paso a paso |
+| `servings` | INTEGER | NOT NULL, DEFAULT 1, CHECK (`> 0`) | Porciones base de referencia |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación (UTC) |
 
 Restricción adicional: `CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)` impide que un usuario registre dos recetas con el mismo nombre.
 
-`servings` es informativo. Cocinar la receta descuenta las cantidades guardadas en `recipe_ingredients`, sin multiplicar por porciones.
+`servings` es de carácter informativo. Cocinar la receta descuenta las cantidades guardadas en `recipe_ingredients`.
 
 ### `recipe_ingredients` — Ingredientes de recetas
 
-Vincula una receta con productos del inventario e indica la cantidad necesaria de cada uno, en la unidad del producto.
+Vincula una receta con productos del inventario e indica la cantidad requerida en la unidad del producto.
 
 | Columna | Tipo | Constraint | Descripción |
 |---|---|---|---|
 | `recipe_id` | UUID | PK (compuesta), FK → `recipes(id)` ON DELETE CASCADE | Referencia a la receta |
-| `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
-| `quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad necesaria del ingrediente |
+| `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE RESTRICT | Insumo consumido |
+| `quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad requerida del ingrediente |
 
-La clave primaria impide repetir el mismo producto dentro de una receta.
+La restricción `ON DELETE RESTRICT` y la regla [RC-06](modulos.md#53-recetas-y-consumo) impiden eliminar un producto si forma parte de una receta activa.
 
 ### `inventory_movements` — Movimientos de inventario
 
-Auditoría de cambios de stock. Cada entrada o salida de `products.current_stock` genera una fila.
+Auditoría inmutable de cambios de existencias. Cada mutación en `products.current_stock` genera un registro en la misma transacción.
 
 | Columna | Tipo | Constraint | Descripción |
 |---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único del movimiento |
-| `product_id` | UUID | NOT NULL, FK → `products(id)` ON DELETE CASCADE | Producto afectado |
-| `quantity_change` | DECIMAL(10,2) | NOT NULL | Positivo = entrada, negativo = salida |
-| `type` | VARCHAR(20) | NOT NULL, CHECK | `manual`, `recipe_consumption` o `shopping` |
-| `reason` | TEXT | NULL | Motivo opcional |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora del movimiento |
+| `product_id` | UUID | NOT NULL, FK → `products(id)` ON DELETE CASCADE | Producto auditado |
+| `quantity_change` | DECIMAL(10,2) | NOT NULL, CHECK (`!= 0`) | Cantidad (+ entrada, - salida) |
+| `type` | VARCHAR(20) | NOT NULL, CHECK | Tipo de movimiento (ver regla [AU-02](modulos.md#57-auditoría-de-movimientos)): `manual`, `recipe_consumption`, `shopping` |
+| `reason` | TEXT | NULL | Motivo descriptivo opcional |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Timestamp exacto del cambio (UTC) |
 
-No tiene `user_id`. El dueño se obtiene por `products.user_id`. La API no actualiza ni borra estas filas. Si se elimina el producto (o el usuario, que borra sus productos en cascada), el historial de ese producto también se borra.
+No posee `user_id` directo; el dueño se resuelve a través de `products.user_id`. La API no expone operaciones de actualización o borrado sobre esta tabla. Si se elimina un producto, su historial se purga en cascada deliberadamente para evitar registros huérfanos.
 
 ### `shopping_lists` — Listas de compras
 
-Encabezado de una lista. No tiene nombre: se identifica por fecha de creación.
+Encabezado de una lista de reposición. No posee nombre; se identifica mediante su fecha de creación.
 
 | Columna | Tipo | Constraint | Descripción |
 |---|---|---|---|
 | `id` | UUID | PK, auto-generado | Identificador único de la lista |
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la lista |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de generación (UTC) |
 | `is_purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | `true` cuando la compra fue confirmada |
 
-El índice único parcial `shopping_lists_one_active_per_user` garantiza a nivel de base de datos que exista como máximo una lista activa por usuario (`is_purchased = false`).
+El índice único parcial `shopping_lists_one_active_per_user` garantiza que exista como máximo una lista abierta (`is_purchased = false`) por usuario.
 
 ### `shopping_list_items` — Ítems de la lista de compras
 
@@ -222,8 +224,8 @@ El índice único parcial `shopping_lists_one_active_per_user` garantiza a nivel
 |---|---|---|---|
 | `shopping_list_id` | UUID | PK (compuesta), FK → `shopping_lists(id)` ON DELETE CASCADE | Referencia a la lista |
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE CASCADE | Referencia al producto |
-| `suggested_quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad sugerida para comprar, en la unidad del producto |
-| `purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | Ítem marcado como comprado |
+| `suggested_quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad sugerida a comprar, en la unidad del producto |
+| `purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicador de artículo comprado |
 
 ---
 
@@ -317,13 +319,13 @@ erDiagram
 
 | Relación | Tipo | Descripción |
 |---|---|---|
-| `auth.users` → `products` | 1:N | Un usuario tiene muchos productos. Borrar el usuario borra sus productos |
+| `auth.users` → `products` | 1:N | Un usuario tiene muchos productos. Borrar el usuario borra sus productos en cascada |
 | `auth.users` → `containers` | 1:N | Un usuario tiene muchos contenedores |
 | `auth.users` → `recipes` | 1:N | Un usuario tiene muchas recetas |
 | `auth.users` → `shopping_lists` | 1:N | Un usuario tiene muchas listas de compras |
-| `products` ↔ `containers` | M:N | Vía `product_containers` |
-| `recipes` ↔ `products` | M:N | Vía `recipe_ingredients`, con cantidad |
-| `products` → `inventory_movements` | 1:N | Un producto tiene muchos movimientos de stock |
+| `products` ↔ `containers` | M:N | Vía tabla pivote `product_containers` |
+| `recipes` ↔ `products` | M:N | Vía `recipe_ingredients`, con cantidad requerida |
+| `products` → `inventory_movements` | 1:N | Un producto registra su historial de auditoría |
 | `shopping_lists` ↔ `products` | M:N | Vía `shopping_list_items`, con cantidad sugerida y estado de compra |
 
 ---
@@ -337,8 +339,8 @@ erDiagram
 | Claves primarias | `id UUID` con `gen_random_uuid()`, salvo pivotes | `products.id` |
 | Pivotes | Clave primaria compuesta por las dos FK | `(recipe_id, product_id)` |
 | Dueño | `user_id` → `auth.users(id)` en toda tabla que no sea pivote ni movimiento | `containers.user_id` |
-| Cantidades | `DECIMAL(10, 2)`, misma unidad que `products.unit` | `current_stock`, `quantity` |
-| Borrado | `ON DELETE CASCADE` desde el padre | Borrar un producto borra sus ingredientes, movimientos e ítems de compra |
+| Cantidades | `DECIMAL(10, 2)`, en la misma unidad que `products.unit` | `current_stock`, `quantity` |
+| Borrado | `ON DELETE CASCADE` desde el padre, salvo productos en recetas (`RESTRICT`) | Borrar un producto elimina sus movimientos e ítems de compra |
 | Zona horaria | `TIMESTAMPTZ` con valor por defecto `NOW()` en todas las marcas temporales | `products.created_at` |
 
 Estados derivados de stock (no se persisten). Las condiciones son mutuamente excluyentes y se evalúan en orden de precedencia:
@@ -353,7 +355,7 @@ Estados derivados de stock (no se persisten). Las condiciones son mutuamente exc
 
 ## 6. Índices recomendados
 
-PostgreSQL no indexa automáticamente las columnas de una foreign key. Las consultas del MVP filtran por dueño y por producto:
+PostgreSQL no indexa automáticamente las columnas de una foreign key. Las consultas del sistema filtran por usuario y por producto:
 
 ```sql
 CREATE INDEX products_user_id_idx ON products (user_id);
@@ -374,13 +376,15 @@ CREATE INDEX product_containers_container_id_idx ON product_containers (containe
 
 En base a la revisión técnica del diseño de datos previa a la codificación, se formalizaron las siguientes definiciones:
 
-**Aislamiento e integridad multi-inquilino.** Cada query de la API filtra por el `user_id` del JWT. Las tablas pivote (`product_containers`, `recipe_ingredients`) y la tabla `inventory_movements` no tienen `user_id`: en la capa de servicios de NestJS (`ContainersService`, `RecipesService`, `InventoryService`) se comprueba que el producto, el contenedor y la receta pertenezcan al mismo usuario autenticado antes de registrar la operación. Si alguno no pertenece al usuario, la API responde HTTP 404 para no revelar la existencia de recursos ajenos.
+**Lógica transaccional en la API vs. Triggers.** La orquestación de transacciones complejas (descuento atómico de múltiples insumos al cocinar, liquidación de compras y control de concurrencia mediante `FOR UPDATE`) se implementa en los servicios de NestJS mediante un pool directo de Node-Postgres (`pg`). Esto garantiza trazabilidad, permite responder con códigos HTTP semánticos (400, 404, 409) y facilita las pruebas unitarias e integradas dentro del pipeline de CI/CD sin acoplar lógica a procedimientos almacenados en la base de datos.
 
-**Valores permitidos y restricciones en base.** Se incorporaron restricciones `CHECK` en el script SQL para validar los valores de `unit` (`'g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'`), `inventory_movements.type` (`'manual', 'recipe_consumption', 'shopping'`), y la no negatividad o positividad estricta de existencias y porciones (`current_stock >= 0`, `min_stock >= 0`, `reorder_quantity > 0`, `quantity > 0`, `suggested_quantity > 0`, `servings > 0`).
+**Aislamiento multi-inquilino en la aplicación vs. RLS.** La API actúa como guardián estricto: toda consulta SQL generada por el backend incluye el predicado `WHERE user_id = $1`, donde el valor se extrae directamente del JWT validado por `SupabaseAuthGuard`. En las tablas pivote (`product_containers`, `recipe_ingredients`) y en `inventory_movements`, el servicio valida que las entidades vinculadas pertenezcan al usuario autenticado antes de persistir, respondiendo HTTP 404 ante inconsistencias para no revelar la existencia de recursos ajenos.
 
-**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos.
+**Restricciones de integridad en base de datos.** Se incorporaron restricciones `CHECK` en el script SQL para validar los valores permitidos de `unit` (`'g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'`), `inventory_movements.type` (`'manual', 'recipe_consumption', 'shopping'`), y la no negatividad o positividad estricta de existencias y porciones (`current_stock >= 0`, `min_stock >= 0`, `reorder_quantity > 0`, `quantity > 0`, `suggested_quantity > 0`, `servings > 0`).
 
-**Zona horaria.** Todas las columnas `created_at` usan `TIMESTAMPTZ` para almacenar fecha y hora en UTC, garantizando independencia respecto a la zona horaria del servidor o de los clientes.
+**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos. En contraposición, los productos asociados a recetas activas están protegidos por `ON DELETE RESTRICT` (regla [RC-06](modulos.md#53-recetas-y-consumo)).
+
+**Zona horaria.** Todas las columnas temporales usan `TIMESTAMPTZ` para almacenar fecha y hora en UTC, garantizando independencia respecto a la zona horaria del servidor o de los clientes.
 
 **Unificación de unidades y presentación de compra.** Se descartó el modelado de presentaciones comerciales intermedias para el MVP; todo producto opera en una única unidad de stock (`unit`), estandarizando el uso de `g` en toda la base y documentación.
 
