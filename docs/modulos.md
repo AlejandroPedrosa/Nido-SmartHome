@@ -78,6 +78,7 @@ Gestión de usuarios con Supabase Auth.
 |--------|------|-------------|
 | POST | `/auth/register` | Registrar usuario y crear contenedores sugeridos |
 | POST | `/auth/login` | Iniciar sesión |
+| POST | `/auth/refresh` | Renovar el access token (JWT) utilizando el refresh token activo |
 | POST | `/auth/logout` | Cerrar sesión |
 | GET | `/auth/me` | Usuario actual |
 
@@ -96,13 +97,13 @@ CRUD de productos y consulta de stock. El cambio de stock no se escribe solo ac�
 
 - Crear, leer, actualizar y eliminar productos
 - Stock mínimo y cantidad de reposición
-- Filtros por categoría, nombre y stock bajo
+- Filtros por categoría, nombre, stock bajo y contenedor asignado
 
 **Endpoints**:
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/products` | Listar productos del usuario (filtros opcionales) |
+| GET | `/products` | Listar productos del usuario (filtros opcionales: `category`, `name`, `low_stock`, `container_id`) |
 | GET | `/products/low-stock` | Productos con `current_stock < min_stock` |
 | GET | `/products/:id` | Producto por ID, solo si pertenece al usuario |
 | POST | `/products` | Crear producto |
