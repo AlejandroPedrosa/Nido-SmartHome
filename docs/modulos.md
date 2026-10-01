@@ -49,6 +49,7 @@ nido-smarthome/
 │       │   └── database/      # Cliente Supabase y Pool PostgreSQL
 │       └── ...
 ├── docs/
+│   └── database/          # Script ejecutable schema.sql
 ├── .github/workflows/
 └── README.md
 ```
@@ -63,14 +64,21 @@ Todas las rutas privadas exigen el JWT de Supabase. El `user_id` se extrae siemp
 
 ### Persistencia, Transacciones y Concurrencia
 
-* **Transacciones ACID:** Debido a que la biblioteca cliente `supabase-js` no admite transacciones de múltiples sentencias desde el backend, las mutaciones compuestas (alta de producto con stock inicial, consumo de recetas y confirmación de listas de compras) se ejecutan mediante una conexión directa a PostgreSQL usando un pool transaccional de Node-Postgres (`pg`) administrado en el módulo `database`. El cliente `supabase-js` se utiliza para la autenticación y operaciones atómicas estándar.
-* **Control de concurrencia al cocinar:** Para evitar inconsistencias de inventario o stocks negativos derivados de dos consumos simultáneos, el descuento de stock en `POST /recipes/:id/cook` se realiza dentro de la transacción ejecutando un bloqueo pesimista de filas (`SELECT current_stock FROM products WHERE id = $1 FOR UPDATE`) o una actualización condicional indivisible:
-  ```sql
-  UPDATE products
-  SET current_stock = current_stock - $1
-  WHERE id = $2 AND current_stock >= $1;
+* **Estrategia única de acceso a datos:** Para mantener una arquitectura homogénea y predecible, **el pool de Node-Postgres (`pg`) se utiliza para el 100% de las operaciones sobre la base de datos relacional** (consultas de lectura, mutaciones simples y transacciones complejas). La librería `@supabase/supabase-js` queda reservada **exclusivamente para la gestión de identidad y autenticación** en el módulo `auth`.
+* **Transacciones ACID y propagación entre servicios:** Las operaciones compuestas que involucran múltiples entidades (alta de producto con stock inicial, cocción de recetas y liquidación de compras) se ejecutan dentro de transacciones atómicas controladas por un cliente reservado del pool (`pg.PoolClient`). Cuando un servicio orquestador (`ProductsService`, `RecipesService` o `ShoppingService`) necesita asentar auditorías o mutar existencias, invoca a los métodos de `InventoryService` pasando como parámetro opcional el cliente transaccional activo:
+  ```typescript
+  async registerMovement(dto: CreateMovementDto, client?: PoolClient): Promise<Movement>
   ```
-  Si alguna de las filas afectadas devuelve cero registros actualizados (stock insuficiente en el momento de la mutación), se ejecuta `ROLLBACK` total y se responde con código HTTP 400.
+  Si el cliente está presente, la sentencia se ejecuta sobre dicha transacción; si no, `InventoryService` adquiere una conexión del pool para operar de forma atómica estándar.
+* **Control de concurrencia al cocinar (Estrategia única: Bloqueo Pesimista):** Para evitar condiciones de carrera, inconsistencias de existencias o stocks negativos derivados de dos solicitudes simultáneas de cocción sobre los mismos insumos, el servicio de recetas aplica **bloqueo pesimista explícito a nivel de fila (`SELECT ... FOR UPDATE`) sobre la tabla `products`**. Dentro de la transacción abierta:
+  1. Se bloquean y leen las filas de inventario correspondientes a los ingredientes requeridos:
+     ```sql
+     SELECT id, current_stock FROM products 
+     WHERE id = ANY($1) AND user_id = $2 
+     FOR UPDATE;
+     ```
+  2. Se valida que `current_stock >= quantity` para cada insumo. Si alguno no cuenta con saldo suficiente, se ejecuta `ROLLBACK` inmediato y se responde con código `HTTP 400 Bad Request`.
+  3. Si todos cumplen con la condición, se descuenta el stock de cada producto mediante `UPDATE products SET current_stock = current_stock - $1`, se registran los asientos de auditoría en `inventory_movements` y se ejecuta `COMMIT`.
 
 ---
 
@@ -95,23 +103,18 @@ Gestión de usuarios, control de sesiones y tokens con Supabase Auth.
 | POST | `/auth/logout` | Cerrar sesión e invalidar tokens |
 | GET | `/auth/me` | Obtener datos del usuario actual autenticado |
 
-**Piezas**:
-
-- `SupabaseAuthGuard` — valida la firma y vigencia del JWT
-- `CurrentUser` — decorador que expone el `user_id` autenticado extraído de la request
-
 ---
 
 ### Módulo `products` — Productos
 
-CRUD de productos y consulta de stock. Cada alta con stock inicial, ajuste o consumo pasa por `inventory`, que actualiza `current_stock` e inserta el movimiento correspondiente de manera indivisible.
+CRUD de productos y consulta de existencias.
 
 **Responsabilidades**:
 
 - Crear, leer, actualizar y eliminar productos
 - Configuración de stock mínimo y cantidad sugerida de reposición
 - Filtros por categoría, nombre, condición de stock bajo y contenedor asignado
-- Validación de integridad: bloqueo de eliminación si el producto pertenece a recetas activas
+- Validación de integridad: bloqueo de eliminación si el producto forma parte de una receta existente
 
 **Endpoints**:
 
@@ -122,13 +125,7 @@ CRUD de productos y consulta de stock. Cada alta con stock inicial, ajuste o con
 | GET | `/products/:id` | Producto por ID (solo si pertenece al usuario) |
 | POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional) |
 | PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock) |
-| DELETE | `/products/:id` | Eliminar producto (responde 409 si es ingrediente de recetas; si no, borra producto e historial) |
-
-**Piezas**:
-
-- `ProductsService` — lógica de negocio y validación de unicidad por nombre
-- `ProductsController` — endpoints REST
-- `ProductsRepository` — capa de acceso a datos
+| DELETE | `/products/:id` | Eliminar producto (responde 409 si es insumo de receta existente; si no, purga producto e historial) |
 
 ---
 
@@ -148,7 +145,7 @@ Espacios físicos del hogar y asignación de inventario.
 |--------|------|-------------|
 | GET | `/containers` | Listar contenedores del usuario |
 | GET | `/containers/:id` | Contenedor con sus productos asociados |
-| POST | `/containers` | Crear contenedor (valida nombre único por usuario) |
+| POST | `/containers` | Crear contenedor (valida nombre único insensible a mayúsculas por usuario) |
 | PATCH | `/containers/:id` | Actualizar contenedor |
 | DELETE | `/containers/:id` | Eliminar contenedor (remueve la relación pivote, los productos persisten) |
 | POST | `/containers/:id/products` | Asignar un producto del mismo usuario |
@@ -162,7 +159,7 @@ Gestión de recetas culinarias, ingredientes vinculados al inventario y preparac
 
 **Responsabilidades**:
 
-- CRUD de recetas, instrucciones y porciones
+- CRUD de recetas, instrucciones y porciones (incluyendo eliminación completa de receta)
 - Asociación obligatoria de al menos un ingrediente por receta
 - Validación de recetas disponibles basadas en existencias
 - Preparación transaccional con control de concurrencia y descuento de insumos
@@ -176,20 +173,20 @@ Gestión de recetas culinarias, ingredientes vinculados al inventario y preparac
 | GET | `/recipes/:id` | Receta detallada con sus ingredientes |
 | POST | `/recipes` | Crear receta (exige al menos un ingrediente propio) |
 | PATCH | `/recipes/:id` | Actualizar receta e ingredientes |
-| DELETE | `/recipes/:id` | Eliminar receta y sus dependencias en cascada |
+| DELETE | `/recipes/:id` | Eliminar receta y sus ingredientes en cascada |
 | POST | `/recipes/:id/cook` | Preparar plato de forma atómica y registrar auditoría de consumo |
 
 ---
 
 ### Módulo `inventory` — Movimientos
 
-Registro indivisible de cada cambio de inventario. Gestiona la transacción directa con PostgreSQL.
+Registro indivisible de cada cambio de inventario. Administra la conexión transaccional con PostgreSQL.
 
 **Responsabilidades**:
 
 - Ajuste manual de entrada o salida con validación de no negatividad
 - Historial filtrado por producto, tipo y fecha
-- Servicio interno transaccional consumido por `recipes` y `shopping`
+- Servicio interno transaccional consumido por `products`, `recipes` y `shopping`
 
 **Endpoints**:
 
@@ -203,14 +200,14 @@ Registro indivisible de cada cambio de inventario. Gestiona la transacción dire
 
 ### Módulo `shopping` — Listas de compras
 
-Generación consolidada y liquidación de listas de reposición.
+Generación consolidada, sincronización y liquidación de listas de reposición.
 
 **Responsabilidades**:
 
 - Armar la lista con productos bajo mínimo (`current_stock < min_stock`)
 - Mantener como máximo una lista activa (`is_purchased = false`)
-- Preservar ítems ya marcados al regenerar la lista activa
-- Liquidar compras ingresando stock únicamente de artículos marcados
+- Sincronización limpia: preserva ítems marcados como comprados, actualiza faltantes y **elimina ítems no comprados cuyo stock ya se haya normalizado**
+- Liquidar compras ingresando stock únicamente de artículos marcados dentro de una transacción atómica
 
 **Endpoints**:
 
@@ -218,9 +215,9 @@ Generación consolidada y liquidación de listas de reposición.
 |--------|------|-------------|
 | GET | `/shopping/lists` | Listar histórico de listas de compras del usuario |
 | GET | `/shopping/lists/:id` | Obtener lista detallada con sus ítems |
-| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (responde vacío si no hay faltantes) |
+| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados; responde array vacío si no hay faltantes) |
 | PATCH | `/shopping/lists/:id/items/:productId` | Marcar o desmarcar un ítem como comprado (`purchased`) |
-| POST | `/shopping/lists/:id/purchase` | Confirmar compra de ítems marcados, sumar a stock y cerrar lista |
+| POST | `/shopping/lists/:id/purchase` | Confirmar compra de ítems marcados, sumar a stock y cerrar lista dentro de transacción |
 
 ---
 
@@ -293,7 +290,13 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 
 ## 5. Reglas de negocio
 
-### 5.1 Gestión de stock
+### 5.1 Reglas generales del sistema
+
+| ID | Regla | Descripción |
+|---|---|---|
+| UG-01 | Unicidad de nombres por usuario | Los nombres de productos, contenedores y recetas deben ser únicos por usuario. La comparación es insensible a mayúsculas/minúsculas y espacios extremos (`LOWER(TRIM(name))`). El intento de registrar o renombrar un elemento duplicado es rechazado con `HTTP 409 Conflict` |
+
+### 5.2 Gestión de stock
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -304,29 +307,29 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | RS-05 | Entrada por compra | Confirmar la lista incrementa el stock únicamente de los ítems marcados como comprados (`purchased = true`) |
 | RS-06 | Ajuste manual | Entrada o salida manual con motivo opcional, generando un registro de auditoría de tipo `manual` |
 
-### 5.2 Lista de compras
+### 5.3 Lista de compras
 
 | ID | Regla | Descripción |
 |---|---|---|
 | LC-01 | Criterio de inclusión | La generación automática incluye a todos los productos del usuario con `current_stock < min_stock` |
 | LC-02 | Cantidad sugerida | Aplica la fórmula de cálculo establecida en la regla RS-02 |
-| LC-03 | Una lista activa | Existe como máximo una lista abierta (`is_purchased = false`). La regeneración preserva los ítems ya marcados como comprados y actualiza los no comprados |
-| LC-04 | Confirmación única | Intentar confirmar una lista que ya posee `is_purchased = true` es rechazado con código HTTP 409 (Conflict) |
-| LC-05 | Ítems obligatorios | Intentar confirmar una lista sin ningún ítem marcado como comprado (`purchased = true`) responde HTTP 400 (Bad Request) |
-| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías y responde HTTP 200 con array vacío |
+| LC-03 | Una lista activa y depuración de ítems | Existe como máximo una lista abierta (`is_purchased = false`). La sincronización preserva los ítems marcados como comprados, actualiza faltantes y **elimina automáticamente los ítems no comprados cuyos productos ya no estén bajo el mínimo** (recompuestos por compra externa o ajuste) |
+| LC-04 | Confirmación única | Intentar confirmar una lista que ya posee `is_purchased = true` es rechazado dentro de la transacción con código HTTP 409 (Conflict) |
+| LC-05 | Ítems obligatorios al confirmar | Intentar confirmar una lista sin ningún ítem marcado como comprado (`purchased = true`) responde HTTP 400 (Bad Request) dentro de la transacción |
+| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa (o la elimina si queda vacía) y responde HTTP 200 con array vacío |
 
-### 5.3 Recetas y consumo
+### 5.4 Recetas y consumo
 
 | ID | Regla | Descripción |
 |---|---|---|
 | RC-01 | Pertenencia de insumos | Cada ingrediente asociado debe ser un producto perteneciente al mismo `user_id` del usuario autenticado |
 | RC-02 | Contenido mínimo | Toda receta debe registrar obligatoriamente al menos un ingrediente (`quantity > 0`). Se rechaza la creación sin ingredientes con HTTP 400 |
-| RC-03 | Control de concurrencia | La verificación y descuento de stock durante la cocción se realiza con bloqueo pesimista o condición atómica indivisible |
+| RC-03 | Control de concurrencia | La verificación y descuento de existencias al cocinar se realiza exclusivamente mediante bloqueo pesimista (`SELECT ... FOR UPDATE` sobre `products`) |
 | RC-04 | Disponibilidad | Una receta se considera disponible solo si `current_stock >= quantity` para la totalidad de sus ingredientes |
 | RC-05 | Auditoría de consumo | Se asienta un movimiento `recipe_consumption` en `inventory_movements` por cada ingrediente descontado |
 | RC-06 | Integridad referencial | No se permite eliminar un producto que esté asociado a una receta existente. La API responde HTTP 409 (Conflict) exigiendo desvincular el insumo primero |
 
-### 5.4 Contenedores
+### 5.5 Contenedores
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -334,7 +337,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | CT-02 | Inicialización | El registro de usuario crea automáticamente: Cocina, Heladera, Freezer, Alacena, Baño y Lavadero |
 | CT-03 | Desvinculación por borrado | Eliminar un contenedor suprime sus vínculos en `product_containers`. Los productos preservan su stock y existencia |
 
-### 5.5 Aislamiento de datos
+### 5.6 Aislamiento de datos
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -342,7 +345,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | MT-02 | Filtro obligatorio | Toda consulta SQL y de servicio incluye de forma estricta el `user_id` obtenido del JWT |
 | MT-03 | Ocultamiento de existencia | Peticiones a identificadores ajenos o no coincidentes en tablas pivote responden HTTP 404 (Not Found) |
 
-### 5.6 Unidades de medida
+### 5.7 Unidades de medida
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -350,7 +353,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | UN-02 | Homogeneidad | Stock, mínimos, reposición e ingredientes se expresan en la misma unidad del producto; no se realizan conversiones intermedias en el MVP |
 | UN-03 | Unidad por defecto | Si no se especifica unidad en la creación, se guarda `'unidad'` |
 
-### 5.7 Auditoría de movimientos
+### 5.8 Auditoría de movimientos
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -359,7 +362,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | AU-03 | Contenido | Referencia a producto, cantidad con signo (+ entrada, - salida), tipo, fecha UTC y motivo opcional |
 | AU-04 | No edición | La API no expone endpoints para modificar o borrar registros de auditoría |
 
-### 5.8 Autenticación y tokens
+### 5.9 Autenticación y tokens
 
 | ID | Regla | Descripción |
 |---|---|---|
@@ -373,7 +376,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 
 ### 6.1 Diagrama de Casos de Uso
 
-Representa los flujos principales del sistema interactuando con el actor principal (`Usuario`). Las operaciones compuestas de cocción y confirmación de compras incluyen internamente la mutación de auditoría y ajuste de inventario.
+Representa los flujos del sistema con el actor principal (`Usuario`). Las mutaciones de inventario generadas por ajustes manuales, preparación de recetas y confirmación de compras convergen en el caso central de auditoría de movimientos (`CU-04`).
 
 ```mermaid
 graph LR
@@ -382,27 +385,41 @@ graph LR
     subgraph NIDO_SmartHome ["NIDO SmartHome (Sistema)"]
         CU01["CU-01: Registrarse"]
         CU02["CU-02: Iniciar sesión"]
-        CU03["CU-03: Gestionar productos"]
-        CU04["CU-04: Ajustar stock manualmente"]
-        CU05["CU-05: Gestionar contenedores"]
-        CU06["CU-06: Gestionar recetas"]
-        CU07["CU-07: Cocinar receta"]
-        CU08["CU-08: Generar lista de compras"]
-        CU09["CU-09: Confirmar compra"]
+        CU03["CU-03: Cerrar sesión"]
+        
+        CU04["CU-04: Registrar movimiento de inventario"]
+        CU05["CU-05: Ajustar stock manualmente"]
+        CU06["CU-06: Consultar historial de movimientos"]
+        
+        CU07["CU-07: Gestionar productos"]
+        CU08["CU-08: Gestionar contenedores"]
+        
+        CU09["CU-09: Gestionar recetas (CRUD)"]
+        CU10["CU-10: Consultar recetas disponibles"]
+        CU11["CU-11: Cocinar receta"]
+        
+        CU12["CU-12: Generar/Sincronizar lista de compras"]
+        CU13["CU-13: Marcar ítems de lista de compras"]
+        CU14["CU-14: Confirmar compra"]
 
-        CU07 -.->|<<include>>| CU04
-        CU09 -.->|<<include>>| CU04
+        CU05 -.->|<<include>>| CU04
+        CU11 -.->|<<include>>| CU04
+        CU14 -.->|<<include>>| CU04
     end
 
     User --> CU01
     User --> CU02
     User --> CU03
-    User --> CU04
     User --> CU05
     User --> CU06
     User --> CU07
     User --> CU08
     User --> CU09
+    User --> CU10
+    User --> CU11
+    User --> CU12
+    User --> CU13
+    User --> CU14
 ```
 
 ### 6.2 Diagrama de Componentes y Despliegue
@@ -429,10 +446,11 @@ graph TB
         RecipesModule[Recipes Module]
         InventoryModule[Inventory Module]
         ShoppingModule[Shopping Module]
+        DatabaseModule[Database Module - Pool pg]
     end
 
     subgraph supabase [Supabase Cloud]
-        SupabaseAuth[Supabase Auth]
+        SupabaseAuth[Supabase Auth (Identidad)]
         PostgreSQL[(PostgreSQL Relacional)]
     end
 
@@ -455,11 +473,13 @@ graph TB
     NestJS --> ShoppingModule
 
     AuthModule -->|Validación / Tokens| SupabaseAuth
-    ProductsModule -->|Consultas SQL| PostgreSQL
-    ContainersModule -->|Consultas SQL| PostgreSQL
-    RecipesModule -->|Consultas SQL| PostgreSQL
-    InventoryModule -->|Transacciones ACID (pg)| PostgreSQL
-    ShoppingModule -->|Transacciones ACID (pg)| PostgreSQL
+    
+    ProductsModule -->|SQL directo| DatabaseModule
+    ContainersModule -->|SQL directo| DatabaseModule
+    RecipesModule -->|SQL directo| DatabaseModule
+    InventoryModule -->|Transacciones ACID (pg)| DatabaseModule
+    ShoppingModule -->|Transacciones ACID (pg)| DatabaseModule
+    DatabaseModule -->|Pool pg (Conexión directa)| PostgreSQL
 
     GitHubActions -->|Deploy automático| React
     GitHubActions -->|Deploy automático| NestJS
@@ -471,7 +491,7 @@ graph TB
 | Estado del cliente | Zustand | Almacenamiento reactivo y caché en cliente |
 | API REST | NestJS, TypeScript | Lógica de negocio, autorización y validación |
 | Autenticación | Supabase Auth | Gestión de identidad, contraseñas y emisión de JWT |
-| Persistencia y Transacciones | PostgreSQL en Supabase Cloud | Integridad referencial, constraints y transacciones ACID |
+| Persistencia y Transacciones | Pool `pg` hacia PostgreSQL (Supabase Cloud) | Acceso a datos unificado, integridad referencial y transacciones ACID |
 | Hosting e Infraestructura | Vercel, AWS EC2 | Despliegue de cliente web y backend |
 | CI/CD | GitHub Actions | Automatización de pruebas y despliegue |
 
@@ -485,43 +505,46 @@ graph TB
 sequenceDiagram
     actor U as Usuario
     participant F as Frontend
-    participant B as Backend
+    participant B as Backend (Products + Inventory)
     participant DB as PostgreSQL
 
     U->>F: Completa formulario de producto
     F->>B: POST /products (con stock inicial)
     B->>DB: Inicia Transacción (BEGIN)
-    B->>DB: INSERT INTO products
+    B->>DB: INSERT INTO products (user_id, name, unit, min_stock, current_stock...)
     opt current_stock > 0
-        B->>DB: INSERT INTO inventory_movements (type: 'manual')
+        Note over B,DB: ProductsService pasa PoolClient a InventoryService
+        B->>DB: INSERT INTO inventory_movements (quantity: current_stock, type: 'manual')
     end
     B->>DB: Confirma Transacción (COMMIT)
-    B-->>F: 201 Created con producto creado
-    F-->>U: Notificación de producto registrado
+    B-->>F: 201 Created con producto registrado
+    F-->>U: Notificación de producto creado
 ```
 
-### 7.2 Preparar una receta (Transaccional con Concurrencia)
+### 7.2 Preparar una receta (Bloqueo Pesimista sobre Products)
 
 ```mermaid
 sequenceDiagram
     actor U as Usuario
     participant F as Frontend
-    participant B as Backend
+    participant B as Backend (Recipes + Inventory)
     participant DB as PostgreSQL
 
     U->>F: Clic en "Cocinar receta"
     F->>B: POST /recipes/:id/cook
     B->>DB: Inicia Transacción (BEGIN)
-    B->>DB: SELECT ingredientes con FOR UPDATE
+    Note over B,DB: Bloqueo pesimista sobre las filas de la tabla products
+    B->>DB: SELECT id, current_stock FROM products WHERE id = ANY(ingredientes_ids) AND user_id = $1 FOR UPDATE
     
-    alt Stock insuficiente de algún ingrediente
+    alt Stock insuficiente de algún insumo
         B->>DB: ROLLBACK
-        B-->>F: 400 Bad Request (detalle de faltantes)
-        F-->>U: Error en pantalla, sin descuentos
-    else Stock suficiente
+        B-->>F: 400 Bad Request (detalle de insumos faltantes)
+        F-->>U: Error en pantalla, sin mutaciones
+    else Stock suficiente en todos los insumos
         loop Por cada ingrediente
-            B->>DB: UPDATE products SET current_stock = current_stock - quantity
-            B->>DB: INSERT INTO inventory_movements (type: 'recipe_consumption')
+            B->>DB: UPDATE products SET current_stock = current_stock - quantity WHERE id = $1
+            Note over B,DB: RecipesService pasa PoolClient a InventoryService
+            B->>DB: INSERT INTO inventory_movements (quantity: -quantity, type: 'recipe_consumption')
         end
         B->>DB: Confirma Transacción (COMMIT)
         B-->>F: 200 OK
@@ -540,49 +563,64 @@ sequenceDiagram
 
     U->>F: Clic en "Generar lista de compras"
     F->>B: POST /shopping/lists/generate
-    B->>DB: SELECT products WHERE current_stock < min_stock
+    B->>DB: SELECT products WHERE user_id = $1 AND current_stock < min_stock
     
     alt No hay productos bajo mínimo
-        B-->>F: 200 OK (Array vacío, sin cambios en listas)
-        F-->>U: Mensaje "Inventario al día"
-    else Existen faltantes
-        alt Existe lista con is_purchased = false
-            B->>DB: Actualiza ítems no comprados
-        else No hay lista activa
-            B->>DB: INSERT INTO shopping_lists (is_purchased: false)
-            B->>DB: INSERT INTO shopping_list_items
+        opt Existe lista activa con ítems no comprados
+            Note over B,DB: Depura ítems no comprados cuyo stock ya se normalizó
+            B->>DB: DELETE FROM shopping_list_items WHERE shopping_list_id = $1 AND purchased = false
         end
-        B-->>F: 200/201 con la lista activa
+        B-->>F: 200 OK (Array vacío, sin faltantes)
+        F-->>U: Mensaje "Inventario al día"
+    else Existen faltantes bajo el mínimo
+        alt Existe lista activa (is_purchased = false)
+            Note over B,DB: Preserva ítems marcados; actualiza o inserta nuevos faltantes;
+            Note over B,DB: purga ítems no comprados que recuperaron stock
+            B->>DB: Sincroniza ítems de la lista activa
+        else No hay lista activa
+            B->>DB: INSERT INTO shopping_lists (user_id, is_purchased: false)
+            B->>DB: INSERT INTO shopping_list_items (faltantes calculados)
+        end
+        B-->>F: 200/201 con la lista activa consolidada
         F-->>U: Lista de compras actualizada
     end
 ```
 
-### 7.4 Confirmar la compra
+### 7.4 Confirmar la compra (Validaciones atómicas dentro de Transacción)
 
 ```mermaid
 sequenceDiagram
     actor U as Usuario
     participant F as Frontend
-    participant B as Backend
+    participant B as Backend (Shopping + Inventory)
     participant DB as PostgreSQL
 
     U->>F: Clic en "Confirmar compra"
     F->>B: POST /shopping/lists/:id/purchase
     
-    alt Lista ya comprada (is_purchased = true)
+    B->>DB: Inicia Transacción (BEGIN)
+    Note over B,DB: Bloqueo pesimista de la cabecera de la lista para evitar carreras
+    B->>DB: SELECT is_purchased FROM shopping_lists WHERE id = $1 AND user_id = $2 FOR UPDATE
+    
+    alt Lista previamente comprada (is_purchased = true)
+        B->>DB: ROLLBACK
         B-->>F: 409 Conflict (Lista previamente liquidada)
-    else Ningún ítem marcado como comprado
-        B-->>F: 400 Bad Request (Sin artículos adquiridos)
-    else Ítems comprados válidos
-        B->>DB: Inicia Transacción (BEGIN)
-        loop Por cada ítem con purchased = true
-            B->>DB: UPDATE products SET current_stock = current_stock + suggested_quantity
-            B->>DB: INSERT INTO inventory_movements (type: 'shopping')
+    else Lista activa (is_purchased = false)
+        B->>DB: SELECT * FROM shopping_list_items WHERE shopping_list_id = $1 AND purchased = true
+        alt Ningún ítem marcado como comprado
+            B->>DB: ROLLBACK
+            B-->>F: 400 Bad Request (Sin artículos adquiridos marcados)
+        else Ítems comprados válidos
+            loop Por cada ítem con purchased = true
+                B->>DB: UPDATE products SET current_stock = current_stock + suggested_quantity WHERE id = $1
+                Note over B,DB: ShoppingService pasa PoolClient a InventoryService
+                B->>DB: INSERT INTO inventory_movements (quantity: +suggested_quantity, type: 'shopping')
+            end
+            B->>DB: UPDATE shopping_lists SET is_purchased = true, purchased_at = NOW() WHERE id = $1
+            B->>DB: Confirma Transacción (COMMIT)
+            B-->>F: 200 OK
+            F-->>U: Inventario incrementado y lista archivada
         end
-        B->>DB: UPDATE shopping_lists SET is_purchased = true
-        B->>DB: Confirma Transacción (COMMIT)
-        B-->>F: 200 OK
-        F-->>U: Inventario actualizado y lista archivada
     end
 ```
 
@@ -599,7 +637,7 @@ graph TD
     Inventory[Inventory]
     Shopping[Shopping]
     Common[Common]
-    Database[Database / Pool PostgreSQL]
+    Database[Database / Pool pg]
 
     Auth --> Database
     Auth --> Common
@@ -633,70 +671,14 @@ graph TD
 
 | Módulo | Depende de | Motivo |
 |---|---|---|
-| `auth` | `database`, `common` | Manejo de identidades, emisión de JWT y guards |
-| `products` | `auth`, `inventory`, `database`, `common` | CRUD de productos y llamada a `inventory` para movimientos de stock |
+| `auth` | `database`, `common` | Manejo de identidades con Supabase Auth y emisión de JWT |
+| `products` | `auth`, `inventory`, `database`, `common` | CRUD de productos y llamada a `inventory` pasando `PoolClient` para movimientos |
 | `containers` | `auth`, `products`, `database`, `common` | Asignación y comprobación de productos del mismo usuario |
-| `recipes` | `auth`, `products`, `inventory`, `database`, `common` | Verificación de insumos propios y consumo transaccional |
-| `inventory` | `auth`, `database`, `common` | Mutaciones directas de stock y auditoría vía pool transaccional |
-| `shopping` | `auth`, `products`, `inventory`, `database`, `common` | Consulta de stock bajo y liquidación vía transacciones de inventario |
-| `common` | — | Guards, interceptors de errores, pipes de validación y DTOs |
-| `database` | — | Conexión directa con PostgreSQL y cliente Supabase compartido |
-
-### Páginas, Stores y Servicios
-
-```mermaid
-graph TD
-    subgraph paginas [Páginas]
-        LoginPage[Login]
-        RegisterPage[Register]
-        Dashboard[Dashboard]
-        ProductsPage[Products]
-        ContainersPage[Containers]
-        RecipesPage[Recipes]
-        ShoppingPage[Shopping List]
-        SettingsPage[Settings]
-    end
-
-    subgraph stores [Stores - Zustand]
-        AuthStore[useAuthStore]
-        ProductsStore[useProductsStore]
-        ContainersStore[useContainersStore]
-        RecipesStore[useRecipesStore]
-        ShoppingStore[useShoppingStore]
-        InventoryStore[useInventoryStore]
-    end
-
-    subgraph servicios [Servicios HTTP]
-        AuthAPI[auth.service]
-        ProductsAPI[products.service]
-        ContainersAPI[containers.service]
-        RecipesAPI[recipes.service]
-        ShoppingAPI[shopping.service]
-        InventoryAPI[inventory.service]
-    end
-
-    LoginPage --> AuthStore
-    RegisterPage --> AuthStore
-    Dashboard --> ProductsStore
-    Dashboard --> ShoppingStore
-    Dashboard --> RecipesStore
-
-    ProductsPage --> ProductsStore
-    ProductsPage --> InventoryStore
-    ContainersPage --> ContainersStore
-    ContainersPage --> ProductsStore
-    RecipesPage --> RecipesStore
-    RecipesPage --> ProductsStore
-    ShoppingPage --> ShoppingStore
-    SettingsPage --> AuthStore
-
-    ProductsStore --> ProductsAPI
-    ContainersStore --> ContainersAPI
-    RecipesStore --> RecipesAPI
-    ShoppingStore --> ShoppingAPI
-    InventoryStore --> InventoryAPI
-    AuthStore --> AuthAPI
-```
+| `recipes` | `auth`, `products`, `inventory`, `database`, `common` | Verificación de insumos propios y consumo atómico mediante `PoolClient` |
+| `inventory` | `auth`, `database`, `common` | Mutaciones directas de existencias y auditoría inmutable vía pool de conexiones `pg` |
+| `shopping` | `auth`, `products`, `inventory`, `database`, `common` | Consulta de stock bajo y liquidación atómica pasando `PoolClient` a `inventory` |
+| `common` | — | Guards (`SupabaseAuthGuard`), interceptors de errores, pipes de validación y DTOs |
+| `database` | — | Pool de conexiones Node-Postgres (`pg`) compartido y cliente Supabase para Auth |
 
 ---
 
@@ -717,10 +699,10 @@ graph TD
 
 | Código | Significado | Escenario de uso |
 |---|---|---|
-| 200 | OK | Consulta exitosa, actualización ordinaria o generación sin faltantes |
+| 200 | OK | Consulta exitosa, actualización ordinaria o generación sin faltantes (array vacío) |
 | 201 | Created | Recurso creado exitosamente (producto, receta, lista, contenedor) |
 | 204 | No Content | Eliminación exitosa sin cuerpo de retorno |
-| 400 | Bad Request | Error de validación, formato incorrecto, o stock insuficiente al cocinar |
+| 400 | Bad Request | Error de validación, sin ingredientes al crear receta, o stock insuficiente al cocinar |
 | 401 | Unauthorized | Token ausente, firma inválida o sesión expirada |
 | 404 | Not Found | Recurso inexistente o perteneciente a otro usuario (ocultamiento) |
 | 409 | Conflict | Conflicto de estado (eliminar producto usado en receta, confirmar lista ya cerrada, o duplicar nombre) |
