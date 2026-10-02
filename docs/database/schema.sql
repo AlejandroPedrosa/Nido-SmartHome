@@ -3,6 +3,8 @@
 -- PostgreSQL + Supabase (Auth)
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- Productos del inventario
 CREATE TABLE products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,8 +15,7 @@ CREATE TABLE products (
   current_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (current_stock >= 0),
   min_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
   reorder_quantity DECIMAL(10, 2) NULL CHECK (reorder_quantity > 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_products_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Contenedores / espacios del hogar
@@ -22,8 +23,7 @@ CREATE TABLE containers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Relación muchos-a-muchos entre productos y contenedores
@@ -40,8 +40,7 @@ CREATE TABLE recipes (
   name TEXT NOT NULL,
   instructions TEXT,
   servings INTEGER NOT NULL DEFAULT 1 CHECK (servings > 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Ingredientes de recetas (relación receta-producto)
@@ -78,6 +77,16 @@ CREATE TABLE shopping_list_items (
   purchased BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (shopping_list_id, product_id)
 );
+
+-- Unicidad insensible a mayúsculas/minúsculas y espacios por usuario
+CREATE UNIQUE INDEX uq_products_user_name_ci 
+  ON products (user_id, LOWER(TRIM(name)));
+
+CREATE UNIQUE INDEX uq_containers_user_name_ci 
+  ON containers (user_id, LOWER(TRIM(name)));
+
+CREATE UNIQUE INDEX uq_recipes_user_name_ci 
+  ON recipes (user_id, LOWER(TRIM(name)));
 
 -- Garantizar una única lista de compras activa por usuario
 CREATE UNIQUE INDEX shopping_lists_one_active_per_user
