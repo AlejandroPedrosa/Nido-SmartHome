@@ -31,6 +31,8 @@ El comportamiento de la API, las pantallas y las reglas de negocio están en [M�
 -- PostgreSQL + Supabase (Auth)
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- Productos del inventario
 CREATE TABLE products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,8 +43,7 @@ CREATE TABLE products (
   current_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (current_stock >= 0),
   min_stock DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
   reorder_quantity DECIMAL(10, 2) NULL CHECK (reorder_quantity > 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_products_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Contenedores / espacios del hogar
@@ -50,8 +51,7 @@ CREATE TABLE containers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Relación muchos-a-muchos entre productos y contenedores
@@ -68,8 +68,7 @@ CREATE TABLE recipes (
   name TEXT NOT NULL,
   instructions TEXT,
   servings INTEGER NOT NULL DEFAULT 1 CHECK (servings > 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Ingredientes de recetas (relación receta-producto)
@@ -107,6 +106,16 @@ CREATE TABLE shopping_list_items (
   PRIMARY KEY (shopping_list_id, product_id)
 );
 
+-- Unicidad insensible a mayúsculas/minúsculas y espacios por usuario
+CREATE UNIQUE INDEX uq_products_user_name_ci 
+  ON products (user_id, LOWER(TRIM(name)));
+
+CREATE UNIQUE INDEX uq_containers_user_name_ci 
+  ON containers (user_id, LOWER(TRIM(name)));
+
+CREATE UNIQUE INDEX uq_recipes_user_name_ci 
+  ON recipes (user_id, LOWER(TRIM(name)));
+
 -- Garantizar una única lista de compras activa por usuario
 CREATE UNIQUE INDEX shopping_lists_one_active_per_user
   ON shopping_lists (user_id)
@@ -135,7 +144,7 @@ Almacena cada producto que el usuario gestiona en su hogar. Es la tabla central 
 | `reorder_quantity` | DECIMAL(10,2) | NULL, CHECK (`> 0`) | Cantidad fija de reposición. Si es NULL, se usa `min_stock - current_stock` |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación del registro (UTC) |
 
-Restricción adicional: `CONSTRAINT uq_products_user_name UNIQUE (user_id, name)` impide que un usuario tenga dos productos con el mismo nombre.
+Restricción adicional: El índice `uq_products_user_name_ci` impide que un usuario tenga dos productos con el mismo nombre de forma insensible a mayúsculas y espacios extremos (`LOWER(TRIM(name))`).
 
 ### `containers` — Contenedores / espacios
 
@@ -148,7 +157,7 @@ Espacios físicos del hogar donde se almacenan productos (Cocina, Heladera, Free
 | `name` | TEXT | NOT NULL | Nombre del contenedor (ej: "Heladera", "Alacena") |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación (UTC) |
 
-Restricción adicional: `CONSTRAINT uq_containers_user_name UNIQUE (user_id, name)` impide que un usuario repita el nombre de un contenedor.
+Restricción adicional: El índice `uq_containers_user_name_ci` impide que un usuario repita el nombre de un contenedor (insensible a mayúsculas).
 
 ### `product_containers` — Relación producto-contenedor
 
@@ -174,7 +183,7 @@ Recetas culinarias del usuario. Los ingredientes viven en `recipe_ingredients` y
 | `servings` | INTEGER | NOT NULL, DEFAULT 1, CHECK (`> 0`) | Porciones base de referencia |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de creación (UTC) |
 
-Restricción adicional: `CONSTRAINT uq_recipes_user_name UNIQUE (user_id, name)` impide que un usuario registre dos recetas con el mismo nombre.
+Restricción adicional: El índice `uq_recipes_user_name_ci` impide que un usuario registre dos recetas con el mismo nombre (insensible a mayúsculas).
 
 `servings` es de carácter informativo. Cocinar la receta descuenta las cantidades guardadas en `recipe_ingredients`.
 
@@ -188,7 +197,7 @@ Vincula una receta con productos del inventario e indica la cantidad requerida e
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE RESTRICT | Insumo consumido |
 | `quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad requerida del ingrediente |
 
-La restricción `ON DELETE RESTRICT` y la regla [RC-06](modulos.md#53-recetas-y-consumo) impiden eliminar un producto si forma parte de una receta activa.
+La restricción `ON DELETE RESTRICT` y la regla [RC-06](modulos.md#53-recetas-y-consumo) impiden eliminar un producto si forma parte de una receta existente.
 
 ### `inventory_movements` — Movimientos de inventario
 
@@ -355,9 +364,15 @@ Estados derivados de stock (no se persisten). Las condiciones son mutuamente exc
 
 ## 6. Índices recomendados
 
-PostgreSQL no indexa automáticamente las columnas de una foreign key. Las consultas del sistema filtran por usuario y por producto:
+PostgreSQL no indexa automáticamente las columnas de una foreign key ni expresiones funcionales. Las consultas del sistema aplican los siguientes índices:
 
 ```sql
+-- Índices para unicidad insensible a mayúsculas/minúsculas
+CREATE UNIQUE INDEX uq_products_user_name_ci ON products (user_id, LOWER(TRIM(name)));
+CREATE UNIQUE INDEX uq_containers_user_name_ci ON containers (user_id, LOWER(TRIM(name)));
+CREATE UNIQUE INDEX uq_recipes_user_name_ci ON recipes (user_id, LOWER(TRIM(name)));
+
+-- Índices sobre Foreign Keys para rendimiento de filtros por usuario y producto
 CREATE INDEX products_user_id_idx ON products (user_id);
 CREATE INDEX containers_user_id_idx ON containers (user_id);
 CREATE INDEX recipes_user_id_idx ON recipes (user_id);
@@ -380,9 +395,9 @@ En base a la revisión técnica del diseño de datos previa a la codificación, 
 
 **Aislamiento multi-inquilino en la aplicación vs. RLS.** La API actúa como guardián estricto: toda consulta SQL generada por el backend incluye el predicado `WHERE user_id = $1`, donde el valor se extrae directamente del JWT validado por `SupabaseAuthGuard`. En las tablas pivote (`product_containers`, `recipe_ingredients`) y en `inventory_movements`, el servicio valida que las entidades vinculadas pertenezcan al usuario autenticado antes de persistir, respondiendo HTTP 404 ante inconsistencias para no revelar la existencia de recursos ajenos.
 
-**Restricciones de integridad en base de datos.** Se incorporaron restricciones `CHECK` en el script SQL para validar los valores permitidos de `unit` (`'g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'`), `inventory_movements.type` (`'manual', 'recipe_consumption', 'shopping'`), y la no negatividad o positividad estricta de existencias y porciones (`current_stock >= 0`, `min_stock >= 0`, `reorder_quantity > 0`, `quantity > 0`, `suggested_quantity > 0`, `servings > 0`).
+**Restricciones de unicidad case-insensitive.** Para evitar registros duplicados diferenciados únicamente por mayúsculas o espacios accidentales (ej. `"Fideos"` vs `"fideos"`), la unicidad por usuario en productos, contenedores y recetas se implementa mediante índices únicos sobre `(user_id, LOWER(TRIM(name)))`.
 
-**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos. En contraposición, los productos asociados a recetas activas están protegidos por `ON DELETE RESTRICT` (regla [RC-06](modulos.md#53-recetas-y-consumo)).
+**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos. En contraposición, los productos asociados a recetas existentes están protegidos por `ON DELETE RESTRICT` (regla [RC-06](modulos.md#53-recetas-y-consumo)).
 
 **Zona horaria.** Todas las columnas temporales usan `TIMESTAMPTZ` para almacenar fecha y hora en UTC, garantizando independencia respecto a la zona horaria del servidor o de los clientes.
 
