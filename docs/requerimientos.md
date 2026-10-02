@@ -58,9 +58,9 @@ Esta matriz certifica qué Casos de Uso (CU) y Reglas de Negocio (especificados 
 | **RF-06** (Asignación producto-contenedor) | CU-08 | CT-01, CT-03, MT-02, MT-03 |
 | **RF-07** (Filtrado de inventario) | CU-07 | RS-01, CT-01, MT-02 |
 | **RF-08** (Ajuste manual y auditoría) | CU-04, CU-05, CU-06 | RS-03, RS-06, AU-01, AU-02, AU-03, AU-04, MT-02 |
-| **RF-09** (CRUD Recetas) | CU-09 | UG-01, RC-01, RC-02, RC-06, MT-01, MT-02, MT-03 |
+| **RF-09** (CRUD Recetas) | CU-09 | UG-01, RC-01, RC-02, MT-01, MT-02, MT-03 |
 | **RF-10** (Recetas disponibles) | CU-10 | RC-04, MT-02 |
-| **RF-11** (Consumo de recetas) | CU-04, CU-11 | RS-03, RS-04, RC-02, RC-03, RC-05, AU-01, AU-02, MT-02 |
+| **RF-11** (Consumo de recetas) | CU-04, CU-11 | RS-03, RS-04, RC-03, RC-05, AU-01, AU-02, MT-02 |
 | **RF-12** (Generación lista de compras) | CU-12 | RS-01, RS-02, LC-01, LC-02, LC-03, LC-06, MT-02 |
-| **RF-13** (Marcado de compras) | CU-13 | LC-03, LC-05, MT-02, MT-03 |
+| **RF-13** (Marcado de compras) | CU-13 | LC-03, MT-02, MT-03 |
 | **RF-14** (Confirmación de compra) | CU-04, CU-14 | RS-05, LC-03, LC-04, LC-05, AU-01, AU-02, MT-02 |
