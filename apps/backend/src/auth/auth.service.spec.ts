@@ -1,11 +1,17 @@
 import {
+  BadRequestException,
+  ConflictException,
   HttpStatus,
+  InternalServerErrorException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthApiError } from '@supabase/supabase-js';
+import { Pool } from 'pg';
 import type { AppSupabaseClient } from '../database';
 import { AuthService } from './auth.service';
+import { DEFAULT_CONTAINERS } from './default-containers';
 
 const session = {
   access_token: 'access-jwt',
@@ -21,13 +27,125 @@ const authError = (code: string, status = 400) =>
 
 describe('AuthService', () => {
   const auth = {
+    signUp: jest.fn(),
     signInWithPassword: jest.fn(),
     refreshSession: jest.fn(),
     admin: { signOut: jest.fn() },
   };
-  const service = new AuthService({ auth } as unknown as AppSupabaseClient);
+  const pool = { query: jest.fn() };
+  const service = new AuthService(
+    { auth } as unknown as AppSupabaseClient,
+    pool as unknown as Pool,
+  );
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    pool.query.mockResolvedValue({ rows: [], rowCount: 6 });
+  });
+
+  describe('register', () => {
+    const credentials = { email: 'ana@test.com', password: 'secreta123' };
+    const newUser = {
+      id: 'user-1',
+      email: 'ana@test.com',
+      identities: [{ id: 'identity-1' }],
+    };
+
+    it('crea el usuario, sus contenedores por defecto y devuelve la sesión', async () => {
+      auth.signUp.mockResolvedValue({
+        data: { user: newUser, session },
+        error: null,
+      });
+
+      const result = await service.register(credentials);
+
+      expect(auth.signUp).toHaveBeenCalledWith(credentials);
+      expect(pool.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO containers'),
+        ['user-1', DEFAULT_CONTAINERS],
+      );
+      expect(result).toEqual({
+        user: { id: 'user-1', email: 'ana@test.com' },
+        session: expect.objectContaining({ access_token: 'access-jwt' }),
+        email_confirmation_required: false,
+      });
+    });
+
+    it('crea los 6 contenedores de la regla CT-02', () => {
+      expect(DEFAULT_CONTAINERS).toEqual([
+        'Cocina',
+        'Heladera',
+        'Freezer',
+        'Alacena',
+        'Baño',
+        'Lavadero',
+      ]);
+    });
+
+    it('sin sesión si el proyecto exige confirmar el email', async () => {
+      auth.signUp.mockResolvedValue({
+        data: { user: newUser, session: null },
+        error: null,
+      });
+
+      const result = await service.register(credentials);
+
+      expect(result.session).toBeNull();
+      expect(result.email_confirmation_required).toBe(true);
+      expect(pool.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('responde 409 si el email ya existe (confirmación activa: sin identidades)', async () => {
+      auth.signUp.mockResolvedValue({
+        data: { user: { ...newUser, identities: [] }, session: null },
+        error: null,
+      });
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(pool.query).not.toHaveBeenCalled();
+    });
+
+    it('responde 409 si Supabase informa que el usuario ya existe', async () => {
+      auth.signUp.mockResolvedValue({
+        data: { user: null, session: null },
+        error: authError('user_already_exists', 422),
+      });
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        new ConflictException('Ya existe una cuenta con ese email'),
+      );
+      expect(pool.query).not.toHaveBeenCalled();
+    });
+
+    it('responde 400 si la contraseña es débil para Supabase', async () => {
+      auth.signUp.mockResolvedValue({
+        data: { user: null, session: null },
+        error: authError('weak_password', 422),
+      });
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('responde 500 y registra el id si fallan los contenedores', async () => {
+      const logSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+      auth.signUp.mockResolvedValue({
+        data: { user: newUser, session },
+        error: null,
+      });
+      pool.query.mockRejectedValue(new Error('connection lost'));
+
+      await expect(service.register(credentials)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('user-1'));
+    });
+  });
 
   describe('login', () => {
     const credentials = { email: 'ana@test.com', password: 'secreta123' };

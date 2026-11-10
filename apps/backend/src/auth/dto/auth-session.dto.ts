@@ -14,3 +14,14 @@ export interface AuthUserDto {
   id: string;
   email: string | null;
 }
+
+/** Respuesta de POST /auth/register. */
+export interface RegisterResponseDto {
+  user: AuthUserDto;
+  /**
+   * Sesión iniciada. Es `null` si el proyecto de Supabase exige confirmar el
+   * email: el usuario debe confirmarlo y luego hacer login.
+   */
+  session: AuthSessionDto | null;
+  email_confirmation_required: boolean;
+}
