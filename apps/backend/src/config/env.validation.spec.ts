@@ -46,6 +46,14 @@ describe('validateEnv', () => {
     ).toThrow('DATABASE_URL');
   });
 
+  it('acepta DATABASE_SSL_CA_PATH como opcional', () => {
+    expect(validateEnv(validEnv).DATABASE_SSL_CA_PATH).toBeUndefined();
+    expect(
+      validateEnv({ ...validEnv, DATABASE_SSL_CA_PATH: 'certs/ca.crt' })
+        .DATABASE_SSL_CA_PATH,
+    ).toBe('certs/ca.crt');
+  });
+
   it('rechaza una SUPABASE_URL con rutas', () => {
     expect(() =>
       validateEnv({

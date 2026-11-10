@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
   Matches,
@@ -36,6 +37,12 @@ export class EnvironmentVariables {
     message: 'DATABASE_URL debe ser una URL postgresql://',
   })
   DATABASE_URL!: string;
+
+  /** Ruta al certificado raíz de Supabase (PEM) para verificar el servidor. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  DATABASE_SSL_CA_PATH?: string;
 
   /** URL base del proyecto, sin rutas (supabase-js agrega /auth/v1, etc.). */
   @IsUrl({ protocols: ['https', 'http'], require_tld: false })

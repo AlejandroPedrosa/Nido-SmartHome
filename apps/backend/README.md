@@ -38,7 +38,8 @@ Los cambios posteriores al esquema se versionan como scripts incrementales en `d
 
 * **`pg` (datos):** se conecta mediante el **Session pooler** de Supabase (puerto `5432`). Soporta transacciones y bloqueos `SELECT ... FOR UPDATE`, necesarios para cocinar recetas y confirmar compras. No usar el Transaction pooler (puerto `6543`): no conserva la sesión entre sentencias.
 * **`@supabase/supabase-js` (identidad):** se usa únicamente en el módulo `auth` para registro, login, refresh, logout y validación de tokens.
-* La conexión exige SSL.
+* **SSL verificado:** la conexión exige SSL y el pool valida el certificado del servidor contra la CA raíz de Supabase, que no forma parte del almacén de certificados de Node. Para obtenerla: Dashboard → *Project Settings* → *Database* → *SSL Configuration* → **Download certificate**, y guardarla como `apps/backend/certs/supabase-ca.crt`. Es un certificado público (no es un secreto) y se versiona en el repositorio para que funcione igual en local, CI y EC2. Sin él, la API no arranca (`self-signed certificate in certificate chain`).
+* No agregar `?sslmode=...` a `DATABASE_URL`: anularía la configuración SSL del pool.
 
 ---
 
@@ -50,6 +51,7 @@ La API lee su configuración de un archivo `.env` en `apps/backend/`. Ese archiv
 |---|---|---|---|
 | `PORT` | No (default `3000`) | `3000` | Puerto HTTP de la API |
 | `DATABASE_URL` | Sí | `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres` | Dashboard → botón **Connect** → *Session pooler* |
+| `DATABASE_SSL_CA_PATH` | Recomendada | `certs/supabase-ca.crt` | Ruta (relativa a `apps/backend`) del certificado raíz de Supabase. Ver *Conexión desde la API* |
 | `SUPABASE_URL` | Sí | `https://<project-ref>.supabase.co` | Dashboard → *Project Settings* → *Data API* → *Project URL*. Solo la URL base, **sin** `/rest/v1` |
 | `SUPABASE_PUBLISHABLE_KEY` | Sí | `sb_publishable_...` | Dashboard → *Project Settings* → *API Keys* → *Publishable key* (reemplaza a la antigua clave `anon`) |
 | `CORS_ORIGIN` | Sí | `http://localhost:5173` | URL del frontend (Vite en local, dominio de Vercel en producción) |
