@@ -125,9 +125,21 @@ CREATE UNIQUE INDEX uq_recipes_user_name_ci
 CREATE UNIQUE INDEX shopping_lists_one_active_per_user
   ON shopping_lists (user_id)
   WHERE is_purchased = FALSE;
+
+-- Row Level Security sin policies: bloquea la API REST pública de Supabase
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE containers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_containers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shopping_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shopping_list_items ENABLE ROW LEVEL SECURITY;
 ```
 
 `auth.users` la administra Supabase Auth. El esquema de la aplicación solo la referencia mediante foreign keys.
+
+Los cambios posteriores a la creación inicial se versionan en [`docs/database/migrations/`](database/migrations/) y se ejecutan en orden. `schema.sql` refleja siempre el estado final del esquema.
 
 ---
 
@@ -403,6 +415,8 @@ En base a la revisión técnica del diseño de datos previa a la codificación, 
 **Lógica transaccional en la API vs. Triggers.** La orquestación de transacciones complejas (descuento atómico de múltiples insumos al cocinar, liquidación de compras y control de concurrencia mediante `FOR UPDATE`) se implementa en los servicios de NestJS mediante un pool directo de Node-Postgres (`pg`). Esto garantiza trazabilidad, permite responder con códigos HTTP semánticos (400, 404, 409) y facilita las pruebas unitarias e integradas dentro del pipeline de CI/CD sin acoplar lógica a procedimientos almacenados en la base de datos.
 
 **Aislamiento multi-inquilino en la aplicación vs. RLS.** La API actúa como guardián estricto: toda consulta SQL generada por el backend incluye el predicado `WHERE user_id = $1`, donde el valor se extrae directamente del JWT validado por `SupabaseAuthGuard`. En las tablas pivote (`product_containers`, `recipe_ingredients`) y en `inventory_movements`, el servicio valida que las entidades vinculadas pertenezcan al usuario autenticado antes de persistir, respondiendo HTTP 404 ante inconsistencias para no revelar la existencia de recursos ajenos.
+
+**RLS habilitado sin policies (defensa en profundidad).** Supabase expone automáticamente las tablas del schema `public` mediante su API REST (`/rest/v1`), accesible con la *Publishable key*, que es pública por diseño. Para que el único camino hacia los datos sea la API NestJS, todas las tablas tienen Row Level Security habilitado **sin definir policies**: los roles `anon` y `authenticated` no pueden leer ni escribir ninguna fila. El backend se conecta con el rol `postgres` (dueño de las tablas, con `BYPASSRLS`), por lo que no se ve afectado. El aislamiento por usuario sigue siendo responsabilidad de la API, tal como se describe en el punto anterior. Aplicado mediante la migración [`001_enable_rls.sql`](database/migrations/001_enable_rls.sql).
 
 **Restricciones de unicidad case-insensitive.** Para evitar registros duplicados diferenciados únicamente por mayúsculas o espacios accidentales (ej. `"Fideos"` vs `"fideos"`), la unicidad por usuario en productos, contenedores y recetas se implementa mediante índices únicos sobre `(user_id, LOWER(TRIM(name)))`.
 
