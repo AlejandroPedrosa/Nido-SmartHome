@@ -94,7 +94,12 @@ CREATE TABLE shopping_lists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  is_purchased BOOLEAN NOT NULL DEFAULT FALSE
+  is_purchased BOOLEAN NOT NULL DEFAULT FALSE,
+  purchased_at TIMESTAMPTZ NULL,
+  CONSTRAINT shopping_lists_purchased_at_consistency CHECK (
+    (is_purchased = FALSE AND purchased_at IS NULL) OR
+    (is_purchased = TRUE AND purchased_at IS NOT NULL)
+  )
 );
 
 -- Items de la lista de compras
@@ -224,8 +229,11 @@ Encabezado de una lista de reposición. No posee nombre; se identifica mediante 
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la lista |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de generación (UTC) |
 | `is_purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | `true` cuando la compra fue confirmada |
+| `purchased_at` | TIMESTAMPTZ | NULL, CHECK de consistencia | Fecha y hora de confirmación de la compra (UTC). `NULL` mientras la lista está activa |
 
 El índice único parcial `shopping_lists_one_active_per_user` garantiza que exista como máximo una lista abierta (`is_purchased = false`) por usuario.
+
+Restricción adicional: el check `shopping_lists_purchased_at_consistency` exige que `purchased_at` sea `NULL` si la lista está activa y no nulo si fue confirmada, evitando estados contradictorios.
 
 ### `shopping_list_items` — Ítems de la lista de compras
 
@@ -312,6 +320,7 @@ erDiagram
         uuid user_id FK
         timestamptz created_at
         boolean is_purchased
+        timestamptz purchased_at
     }
 
     shopping_list_items {
