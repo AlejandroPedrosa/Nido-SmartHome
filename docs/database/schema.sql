@@ -66,7 +66,12 @@ CREATE TABLE shopping_lists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  is_purchased BOOLEAN NOT NULL DEFAULT FALSE
+  is_purchased BOOLEAN NOT NULL DEFAULT FALSE,
+  purchased_at TIMESTAMPTZ NULL,
+  CONSTRAINT shopping_lists_purchased_at_consistency CHECK (
+    (is_purchased = FALSE AND purchased_at IS NULL) OR
+    (is_purchased = TRUE AND purchased_at IS NOT NULL)
+  )
 );
 
 -- Items de la lista de compras
