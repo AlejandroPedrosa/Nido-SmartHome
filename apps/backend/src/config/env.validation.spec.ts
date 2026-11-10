@@ -7,7 +7,7 @@ describe('validateEnv', () => {
     DATABASE_URL:
       'postgresql://postgres.ref:secret@aws-0-sa-east-1.pooler.supabase.com:5432/postgres',
     SUPABASE_URL: 'https://ref.supabase.co',
-    SUPABASE_ANON_KEY: 'anon-key',
+    SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test123',
     CORS_ORIGIN: 'http://localhost:5173',
   };
 
@@ -28,20 +28,49 @@ describe('validateEnv', () => {
     expect(env.PORT).toBe(3000);
   });
 
-  it.each(['DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'CORS_ORIGIN'])(
-    'falla si falta %s',
-    (key) => {
-      const env: Record<string, unknown> = { ...validEnv };
-      delete env[key];
+  it.each([
+    'DATABASE_URL',
+    'SUPABASE_URL',
+    'SUPABASE_PUBLISHABLE_KEY',
+    'CORS_ORIGIN',
+  ])('falla si falta %s', (key) => {
+    const env: Record<string, unknown> = { ...validEnv };
+    delete env[key];
 
-      expect(() => validateEnv(env)).toThrow(key);
-    },
-  );
+    expect(() => validateEnv(env)).toThrow(key);
+  });
 
   it('rechaza una DATABASE_URL que no sea postgresql', () => {
     expect(() =>
       validateEnv({ ...validEnv, DATABASE_URL: 'mysql://user@host/db' }),
     ).toThrow('DATABASE_URL');
+  });
+
+  it('rechaza una SUPABASE_URL con rutas', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        SUPABASE_URL: 'https://ref.supabase.co/rest/v1/',
+      }),
+    ).toThrow('SUPABASE_URL');
+  });
+
+  it('acepta una SUPABASE_URL con barra final', () => {
+    const env = validateEnv({
+      ...validEnv,
+      SUPABASE_URL: 'https://ref.supabase.co/',
+    });
+
+    expect(env.SUPABASE_URL).toBe('https://ref.supabase.co/');
+  });
+
+  it('rechaza una Secret key en lugar de la Publishable key', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        SUPABASE_PUBLISHABLE_KEY: 'sb_secret_abc123',
+      }),
+    ).toThrow('SUPABASE_PUBLISHABLE_KEY');
   });
 
   it('rechaza un PORT fuera de rango', () => {

@@ -50,12 +50,12 @@ La API lee su configuración de un archivo `.env` en `apps/backend/`. Ese archiv
 |---|---|---|---|
 | `PORT` | No (default `3000`) | `3000` | Puerto HTTP de la API |
 | `DATABASE_URL` | Sí | `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres` | Dashboard → botón **Connect** → *Session pooler* |
-| `SUPABASE_URL` | Sí | `https://<project-ref>.supabase.co` | Dashboard → *Project Settings* → *API* |
-| `SUPABASE_ANON_KEY` | Sí | `eyJhbGciOi...` | Dashboard → *Project Settings* → *API* (clave pública `anon`) |
+| `SUPABASE_URL` | Sí | `https://<project-ref>.supabase.co` | Dashboard → *Project Settings* → *Data API* → *Project URL*. Solo la URL base, **sin** `/rest/v1` |
+| `SUPABASE_PUBLISHABLE_KEY` | Sí | `sb_publishable_...` | Dashboard → *Project Settings* → *API Keys* → *Publishable key* (reemplaza a la antigua clave `anon`) |
 | `CORS_ORIGIN` | Sí | `http://localhost:5173` | URL del frontend (Vite en local, dominio de Vercel en producción) |
 
 Notas de seguridad:
 
 * La contraseña dentro de `DATABASE_URL` da acceso total a la base: nunca commitearla ni compartirla por canales públicos.
-* La API **no** usa la clave `service_role`. Toda consulta se filtra por el `user_id` extraído del JWT validado.
+* La API **no** usa la *Secret key* (`sb_secret_...`, antes `service_role`): da acceso total y saltea RLS. La validación de entorno rechaza una Secret key cargada por error en `SUPABASE_PUBLISHABLE_KEY`. Toda consulta se filtra por el `user_id` extraído del JWT validado.
 * En EC2 las variables se cargan en el entorno del proceso (archivo `.env` del servidor o configuración de PM2/Docker), nunca dentro de la imagen ni del repositorio.
