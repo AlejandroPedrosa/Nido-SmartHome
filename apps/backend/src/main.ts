@@ -11,11 +11,13 @@ async function bootstrap() {
 
   // Validación global de DTOs: descarta campos no declarados, rechaza los
   // desconocidos con 400 y transforma el payload a instancias tipadas.
+  // stopAtFirstError: un único mensaje (el primero que falla) por campo.
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      stopAtFirstError: true,
     }),
   );
 
