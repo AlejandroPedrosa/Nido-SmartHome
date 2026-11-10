@@ -10,12 +10,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { EnvironmentVariables } from '../config';
-import { PG_POOL } from './database.constants';
+import { PG_POOL, SUPABASE_CLIENT } from './database.constants';
 import { createPgPool } from './pg-pool.factory';
+import { createSupabaseClient } from './supabase-client.factory';
 
 /**
  * Módulo global de acceso a PostgreSQL.
- * Expone un único pool `pg` compartido por todos los módulos (token PG_POOL).
+ * Expone un único pool `pg` compartido por todos los módulos (token PG_POOL)
+ * y el cliente de Supabase para autenticación (token SUPABASE_CLIENT).
  */
 @Global()
 @Module({
@@ -31,8 +33,19 @@ import { createPgPool } from './pg-pool.factory';
         });
       },
     },
+    {
+      provide: SUPABASE_CLIENT,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<EnvironmentVariables, true>) =>
+        createSupabaseClient({
+          url: config.get('SUPABASE_URL', { infer: true }),
+          publishableKey: config.get('SUPABASE_PUBLISHABLE_KEY', {
+            infer: true,
+          }),
+        }),
+    },
   ],
-  exports: [PG_POOL],
+  exports: [PG_POOL, SUPABASE_CLIENT],
 })
 export class DatabaseModule
   implements OnApplicationBootstrap, OnApplicationShutdown
