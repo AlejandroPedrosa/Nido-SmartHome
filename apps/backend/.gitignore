@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+
+# Build
+dist/
+build/
+
+# Cobertura de tests
+coverage/
+
+# Variables de entorno (nunca versionar credenciales)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Sistema operativo / IDE
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
