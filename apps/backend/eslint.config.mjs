@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs'],
+    ignores: ['eslint.config.mjs', 'dist/**', 'coverage/**', 'node_modules/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -26,10 +26,26 @@ export default tseslint.config(
   },
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
+      // Se desalienta `any`, pero se permite cuando no hay alternativa razonable
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // Una promesa sin await puede ocultar errores de transacciones: se trata como error
+      '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unsafe-argument': 'warn',
-      "prettier/prettier": ["error", { endOfLine: "auto" }],
+      // Variables o argumentos sin usar: error, salvo que empiecen con "_"
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+    },
+  },
+  {
+    // En los tests se relajan las reglas de tipado inseguro propias de los mocks
+    files: ['**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 );
