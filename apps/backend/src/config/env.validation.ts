@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
   Matches,
@@ -37,12 +38,27 @@ export class EnvironmentVariables {
   })
   DATABASE_URL!: string;
 
-  @IsUrl({ protocols: ['https', 'http'], require_tld: false })
-  SUPABASE_URL!: string;
-
+  /** Ruta al certificado raíz de Supabase (PEM) para verificar el servidor. */
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  SUPABASE_ANON_KEY!: string;
+  DATABASE_SSL_CA_PATH?: string;
+
+  /** URL base del proyecto, sin rutas (supabase-js agrega /auth/v1, etc.). */
+  @IsUrl({ protocols: ['https', 'http'], require_tld: false })
+  @Matches(/^https?:\/\/[^/]+\/?$/, {
+    message: 'SUPABASE_URL debe ser la URL base del proyecto, sin rutas',
+  })
+  SUPABASE_URL!: string;
+
+  /**
+   * Publishable key de Supabase (pública, rol anon).
+   * Se rechaza explícitamente una Secret key para no exponer acceso total.
+   */
+  @Matches(/^sb_publishable_\S+$/, {
+    message: 'SUPABASE_PUBLISHABLE_KEY debe comenzar con sb_publishable_',
+  })
+  SUPABASE_PUBLISHABLE_KEY!: string;
 
   /** Uno o más orígenes permitidos, separados por coma. */
   @IsString()
