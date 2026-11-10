@@ -6,8 +6,10 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { AppSupabaseClient } from '../../database';
 import { SUPABASE_CLIENT } from '../../database';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { AuthenticatedRequest } from '../interfaces/authenticated-user.interface';
 
 const BEARER_PREFIX = 'Bearer ';
@@ -19,6 +21,9 @@ const BEARER_PREFIX = 'Bearer ';
  * `auth.getUser(token)` y adjunta el usuario a `request.user`. Validar contra
  * el servidor (y no solo la firma local) permite detectar sesiones cerradas
  * con logout. Ante token ausente, inválido o expirado responde 401.
+ *
+ * Se registra como guard global (APP_GUARD): todas las rutas son privadas
+ * por defecto, salvo las marcadas con `@Public()`.
  */
 @Injectable()
 export class SupabaseAuthGuard implements CanActivate {
@@ -26,9 +31,18 @@ export class SupabaseAuthGuard implements CanActivate {
 
   constructor(
     @Inject(SUPABASE_CLIENT) private readonly supabase: AppSupabaseClient,
+    private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractToken(request.headers.authorization);
 

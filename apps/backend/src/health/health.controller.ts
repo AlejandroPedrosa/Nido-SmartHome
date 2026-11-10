@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
 
 export interface HealthResponse {
   status: 'ok';
@@ -10,6 +11,7 @@ export interface HealthResponse {
  * Endpoint de salud para monitoreo y despliegue (EC2, balanceadores, CI).
  * No requiere autenticación ni accede a la base de datos.
  */
+@Public()
 @Controller('health')
 export class HealthController {
   @Get()

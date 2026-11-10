@@ -1,8 +1,13 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { SupabaseAuthGuard } from './guards/supabase-auth.guard';
 
 @Module({
-  providers: [SupabaseAuthGuard],
+  providers: [
+    SupabaseAuthGuard,
+    // Guard global: todas las rutas exigen JWT salvo las marcadas @Public().
+    { provide: APP_GUARD, useExisting: SupabaseAuthGuard },
+  ],
   exports: [SupabaseAuthGuard],
 })
 export class AuthModule {}
