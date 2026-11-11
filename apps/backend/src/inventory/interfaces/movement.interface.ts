@@ -30,3 +30,18 @@ export interface ApplyMovementResult {
   /** Stock del producto después del movimiento. */
   current_stock: number;
 }
+
+/** Movimiento con datos del producto, para el historial (CU-06). */
+export interface MovementHistoryItem extends InventoryMovement {
+  product_name: string;
+  unit: string;
+}
+
+export interface MovementFilters {
+  productId?: string;
+  type?: MovementType;
+  from?: string;
+  to?: string;
+  limit: number;
+  offset: number;
+}
