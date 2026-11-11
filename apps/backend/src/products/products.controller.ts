@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -12,6 +14,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { uuidParam } from '../common/pipes/uuid-param.pipe';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import type {
   LowStockProduct,
   Product,
@@ -60,5 +63,25 @@ export class ProductsController {
     @Param('id', uuidParam('id')) id: string,
   ): Promise<ProductDetail> {
     return this.productsService.findOne(userId, id);
+  }
+
+  /** RF-03: actualiza metadatos (no el stock). 409 si el nombre ya existe. */
+  @Patch(':id')
+  update(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+    @Body() dto: UpdateProductDto,
+  ): Promise<ProductDetail> {
+    return this.productsService.update(userId, id, dto);
+  }
+
+  /** RF-03 / RC-06: elimina el producto; 409 si es ingrediente de recetas. */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+  ): Promise<void> {
+    return this.productsService.remove(userId, id);
   }
 }

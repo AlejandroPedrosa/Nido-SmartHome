@@ -1,10 +1,16 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool } from 'pg';
 import { DEFAULT_UNIT } from '../common/enums/unit.enum';
 import { PG_POOL, withTransaction } from '../database';
 import { InventoryService, MovementType } from '../inventory';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import {
   LowStockProduct,
   Product,
@@ -15,6 +21,15 @@ import {
   toLowStockProduct,
   toProduct,
 } from './interfaces/product.interface';
+
+/** Campos editables por PATCH (nunca `current_stock`). */
+const UPDATABLE_FIELDS = [
+  'name',
+  'category',
+  'unit',
+  'min_stock',
+  'reorder_quantity',
+] as const;
 
 /** Escapa los comodines de LIKE para que la búsqueda sea literal. */
 function escapeLike(value: string): string {
@@ -155,5 +170,71 @@ export class ProductsService {
     );
 
     return { ...toProduct(rows[0]), containers: containers.rows };
+  }
+
+  /**
+   * RF-03: actualiza metadatos. Solo se modifican los campos enviados; el
+   * stock no se edita acá (se usa POST /inventory/adjust). 404 si es ajeno,
+   * 409 si el nuevo nombre ya existe (UG-01).
+   */
+  async update(
+    userId: string,
+    productId: string,
+    dto: UpdateProductDto,
+  ): Promise<ProductDetail> {
+    const params: unknown[] = [productId, userId];
+    const assignments = UPDATABLE_FIELDS.filter(
+      (field) => dto[field] !== undefined,
+    ).map((field) => {
+      params.push(dto[field]);
+      return `${field} = $${params.length}`;
+    });
+
+    if (assignments.length > 0) {
+      const { rowCount } = await this.pool.query(
+        `UPDATE products SET ${assignments.join(', ')}
+          WHERE id = $1 AND user_id = $2`,
+        params,
+      );
+      if (rowCount === 0) {
+        throw new NotFoundException('Producto no encontrado');
+      }
+    }
+
+    return this.findOne(userId, productId);
+  }
+
+  /**
+   * RF-03: elimina el producto y, en cascada, su historial de movimientos,
+   * sus asignaciones a contenedores y sus ítems de listas de compras.
+   *
+   * RC-06: si es ingrediente de alguna receta responde 409 indicando cuáles.
+   * Se consulta antes de borrar para dar un mensaje útil; si una receta lo
+   * incorpora justo en el medio, la FK `ON DELETE RESTRICT` igual impide el
+   * borrado y el filtro global responde 409.
+   */
+  async remove(userId: string, productId: string): Promise<void> {
+    const recipes = await this.pool.query<{ name: string }>(
+      `SELECT r.name
+         FROM recipe_ingredients ri
+         JOIN recipes r ON r.id = ri.recipe_id
+        WHERE ri.product_id = $1 AND r.user_id = $2
+        ORDER BY LOWER(r.name)`,
+      [productId, userId],
+    );
+    if (recipes.rows.length > 0) {
+      const names = recipes.rows.map((r) => `"${r.name}"`).join(', ');
+      throw new ConflictException(
+        `No se puede eliminar: el producto es ingrediente de ${names}. Quitalo de esas recetas primero`,
+      );
+    }
+
+    const { rowCount } = await this.pool.query(
+      'DELETE FROM products WHERE id = $1 AND user_id = $2',
+      [productId, userId],
+    );
+    if (rowCount === 0) {
+      throw new NotFoundException('Producto no encontrado');
+    }
   }
 }
