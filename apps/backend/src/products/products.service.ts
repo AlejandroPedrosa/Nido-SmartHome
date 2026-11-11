@@ -1,6 +1,9 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
-import { PG_POOL } from '../database';
+import { DEFAULT_UNIT } from '../common/enums/unit.enum';
+import { PG_POOL, withTransaction } from '../database';
+import { InventoryService, MovementType } from '../inventory';
+import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import {
   LowStockProduct,
@@ -20,7 +23,57 @@ function escapeLike(value: string): string {
 
 @Injectable()
 export class ProductsService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly inventoryService: InventoryService,
+  ) {}
+
+  /**
+   * RF-03 / RF-04: crea un producto (flujo 7.1).
+   *
+   * El producto se inserta con stock 0 y, si se informó stock inicial, se
+   * carga con un movimiento `manual` a través de InventoryService, en la
+   * misma transacción. Así todo stock tiene su registro de auditoría (AU-01)
+   * y InventoryService sigue siendo el único que modifica `current_stock`.
+   * Un nombre duplicado (UG-01) lo traduce el filtro de errores a 409.
+   */
+  async create(userId: string, dto: CreateProductDto): Promise<Product> {
+    const initialStock = dto.current_stock ?? 0;
+
+    return withTransaction(this.pool, async (client) => {
+      const { rows } = await client.query<ProductRow>(
+        `INSERT INTO products AS p
+                (user_id, name, category, unit, min_stock, reorder_quantity)
+         VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING ${PRODUCT_COLUMNS}`,
+        [
+          userId,
+          dto.name,
+          dto.category ?? null,
+          dto.unit ?? DEFAULT_UNIT,
+          dto.min_stock ?? 0,
+          dto.reorder_quantity ?? null,
+        ],
+      );
+      const product = rows[0];
+
+      if (initialStock > 0) {
+        const { current_stock } = await this.inventoryService.applyMovement(
+          {
+            userId,
+            productId: product.id,
+            quantityChange: initialStock,
+            type: MovementType.Manual,
+            reason: 'Stock inicial',
+          },
+          client,
+        );
+        product.current_stock = current_stock;
+      }
+
+      return toProduct(product);
+    });
+  }
 
   /**
    * RF-07: productos del usuario, ordenados por nombre. Filtros combinables:

@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { Unit } from '../common/enums/unit.enum';
+import { InventoryService } from '../inventory';
 import { StockStatus } from '../common/utils/stock-status';
 import { ProductRow } from './interfaces/product.interface';
 import { ProductsService } from './products.service';
@@ -19,7 +20,10 @@ const row = (overrides: Partial<ProductRow> = {}): ProductRow => ({
 
 describe('ProductsService (consultas)', () => {
   const pool = { query: jest.fn() };
-  const service = new ProductsService(pool as unknown as Pool);
+  const service = new ProductsService(
+    pool as unknown as Pool,
+    {} as InventoryService,
+  );
 
   const call = (index = -1) => {
     const [sql, params] = pool.query.mock.calls.at(index) as [

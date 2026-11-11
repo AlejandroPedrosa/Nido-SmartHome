@@ -1,6 +1,16 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { uuidParam } from '../common/pipes/uuid-param.pipe';
+import { CreateProductDto } from './dto/create-product.dto';
 import { ProductQueryDto } from './dto/product-query.dto';
 import type {
   LowStockProduct,
@@ -29,6 +39,19 @@ export class ProductsController {
   @Get('low-stock')
   findLowStock(@CurrentUser('id') userId: string): Promise<LowStockProduct[]> {
     return this.productsService.findLowStock(userId);
+  }
+
+  /**
+   * RF-03: crea un producto. Si current_stock > 0 registra el movimiento
+   * inicial en la misma transacción. 409 si el nombre ya existe (UG-01).
+   */
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  create(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateProductDto,
+  ): Promise<Product> {
+    return this.productsService.create(userId, dto);
   }
 
   @Get(':id')
