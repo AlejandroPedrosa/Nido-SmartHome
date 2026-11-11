@@ -6,6 +6,7 @@ import { PgExceptionFilter } from './common/filters/pg-exception.filter';
 import { validateEnv } from './config';
 import { DatabaseModule } from './database';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { HealthModule } from './health/health.module';
     DatabaseModule,
     HealthModule,
     AuthModule,
+    InventoryModule,
   ],
   controllers: [],
   providers: [{ provide: APP_FILTER, useClass: PgExceptionFilter }],
