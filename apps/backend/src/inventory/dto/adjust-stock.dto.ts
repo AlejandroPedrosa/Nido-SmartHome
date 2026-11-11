@@ -10,9 +10,7 @@ import {
   Min,
   NotEquals,
 } from 'class-validator';
-
-/** Máximo representable por DECIMAL(10, 2). */
-export const MAX_QUANTITY = 99_999_999.99;
+import { MAX_QUANTITY } from '../../common/validators/quantity.decorators';
 
 // Los decoradores se evalúan de abajo hacia arriba (ver login.dto.ts).
 export class AdjustStockDto {

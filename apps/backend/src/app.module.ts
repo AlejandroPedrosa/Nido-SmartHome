@@ -7,6 +7,7 @@ import { validateEnv } from './config';
 import { DatabaseModule } from './database';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory';
+import { ProductsModule } from './products';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { InventoryModule } from './inventory';
     HealthModule,
     AuthModule,
     InventoryModule,
+    ProductsModule,
   ],
   controllers: [],
   providers: [{ provide: APP_FILTER, useClass: PgExceptionFilter }],
