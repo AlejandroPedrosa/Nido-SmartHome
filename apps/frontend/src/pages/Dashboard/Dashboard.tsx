@@ -1,400 +1,366 @@
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import { Link } from 'react-router-dom';
 import {
-    AlertTriangle,
-    Archive,
-    ArrowRight,
-    ArrowUpDown,
-    Check,
-    CheckCircle2,
-    ChefHat,
-    Clock,
-    Package,
-    Plus,
-    PackageCheck,
-    ShoppingBag,
-    } from 'lucide-react';
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  ArrowUpDown,
+  Check,
+  CheckCircle2,
+  ChefHat,
+  Package,
+  PackageCheck,
+  Plus,
+  ShoppingBag,
+} from 'lucide-react';
 import { ActiveShoppingListCard } from '@/pages/Dashboard/ActiveShoppingListCard';
+import { productsService } from '@/services/products';
+import { containersService } from '@/services/containers';
+import { inventoryService } from '@/services/inventory';
+import { recipesService } from '@/services/recipes';
+import { useShoppingStore } from '@/stores/useShoppingStore';
+import type { AvailableRecipe, Container, LowStockProduct, MovementHistoryItem, Product } from '@/types';
 
-    interface LowStockItem {
-    id: string;
-    name: string;
-    container: string;
-    current: number;
-    min: number;
-    unit: string;
-    }
+export const Dashboard: FC = () => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
+  const [available, setAvailable] = useState<AvailableRecipe[]>([]);
+  const [recipeTotal, setRecipeTotal] = useState(0);
+  const [movements, setMovements] = useState<MovementHistoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [addedIds, setAddedIds] = useState<string[]>([]);
 
-    interface ContainerSummary {
-    id: string;
-    name: string;
-    itemCount: number;
-    percentage: number;
-    }
+  const activeList = useShoppingStore((s) => s.activeList);
+  const loadActive = useShoppingStore((s) => s.loadActive);
+  const generate = useShoppingStore((s) => s.generate);
 
-    interface RecentMovement {
-    id: string;
-    product: string;
-    delta: string;
-    reason: string;
-    time: string;
-    isPositive: boolean;
-    }
-
-    interface ReadyRecipe {
-    id: string;
-    name: string;
-    category: string;
-    prepTime: number;
-    ingredientsCount: number;
-    }
-
-    const LOW_STOCK_ITEMS: LowStockItem[] = [
-    { id: '1', name: 'Leche entera', container: 'Heladera', current: 1, min: 3, unit: 'l' },
-    { id: '2', name: 'Aceite de oliva', container: 'Alacena', current: 250, min: 500, unit: 'ml' },
-    { id: '3', name: 'Huevos de campo', container: 'Heladera', current: 4, min: 12, unit: 'unid.' },
-    { id: '4', name: 'Arroz integral', container: 'Alacena', current: 300, min: 1000, unit: 'g' },
-    ];
-
-    const CONTAINER_SUMMARIES: ContainerSummary[] = [
-    { id: '1', name: 'Alacena', itemCount: 94, percentage: 78 },
-    { id: '2', name: 'Heladera', itemCount: 68, percentage: 65 },
-    { id: '3', name: 'Freezer', itemCount: 42, percentage: 52 },
-    { id: '4', name: 'Lavadero', itemCount: 28, percentage: 45 },
-    { id: '5', name: 'Baño', itemCount: 16, percentage: 32 },
-    ];
-
-    const RECENT_MOVEMENTS: RecentMovement[] = [
-    {
-        id: '1',
-        product: 'Papas blancas',
-        delta: '-600 g',
-        reason: 'Receta: Tortilla de patatas',
-        time: 'Hoy, 13:15',
-        isPositive: false,
-    },
-    {
-        id: '2',
-        product: 'Leche entera',
-        delta: '+2 l',
-        reason: 'Compra semanal',
-        time: 'Ayer, 19:40',
-        isPositive: true,
-    },
-    {
-        id: '3',
-        product: 'Pechuga de pollo',
-        delta: '-500 g',
-        reason: 'Ajuste manual',
-        time: 'Ayer, 12:10',
-        isPositive: false,
-    },
-    ];
-
-    const ACTIVE_SHOPPING_LIST: { purchasedCount: number; totalCount: number } | null = {
-    purchasedCount: 1,
-    totalCount: 5,
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [prods, conts, low, avail, recipes, movs] = await Promise.all([
+          productsService.list(),
+          containersService.list(),
+          productsService.lowStock(),
+          recipesService.available(),
+          recipesService.list(),
+          inventoryService.listMovements({ limit: 5 }),
+        ]);
+        if (cancelled) return;
+        setProducts(prods);
+        setContainers(conts);
+        setLowStock(low);
+        setAvailable(avail);
+        setRecipeTotal(recipes.length);
+        setMovements(movs);
+        await loadActive();
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'No se pudo cargar el panel');
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
+  }, [loadActive]);
 
-    const READY_RECIPES: ReadyRecipe[] = [
-    { id: '1', name: 'Tortilla de patatas', category: 'Clásicos', prepTime: 35, ingredientsCount: 5 },
-    { id: '2', name: 'Pasta cremosa al limón', category: 'Pasta', prepTime: 25, ingredientsCount: 6 },
-    { id: '3', name: 'Tostadas francesas', category: 'Desayuno', prepTime: 15, ingredientsCount: 3 },
-    ];
+  const handleAddToShoppingList = async (productId: string) => {
+    await generate();
+    setAddedIds((prev) => (prev.includes(productId) ? prev : [...prev, productId]));
+  };
 
-    export const Dashboard: FC = () => {
-    const [addedToCartIds, setAddedToCartIds] = useState<string[]>([]);
+  const shoppingCard =
+    activeList && activeList.item_count > 0
+      ? { purchasedCount: activeList.purchased_count, totalCount: activeList.item_count }
+      : null;
 
-    const handleAddToShoppingList = (id: string) => {
-        setAddedToCartIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    };
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="flex flex-col justify-between gap-4 border-b border-nido-border bg-nido-surface px-6 py-4 sm:flex-row sm:items-center lg:px-8">
+        <div>
+          <h1 className="text-base font-bold text-nido-ink">Panel Principal</h1>
+          <p className="text-xs text-nido-subtle">Resumen general del estado de tu hogar</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            to="/shopping-list"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-nido-border bg-nido-surface px-3.5 py-2 text-xs font-medium text-nido-ink transition-colors hover:bg-nido-bg"
+          >
+            <ShoppingBag className="h-3.5 w-3.5 text-nido-secondary" />
+            <span>Lista de compras</span>
+          </Link>
+          <Link
+            to="/products"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-nido-olive px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-nido-olive-hover"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Agregar producto</span>
+          </Link>
+        </div>
+      </header>
 
-    return (
-        <div className="flex min-h-screen flex-col">
-        {/* Topbar */}
-        <header className="flex flex-col justify-between gap-4 border-b border-nido-border bg-nido-surface px-6 py-4 sm:flex-row sm:items-center lg:px-8">
-            <div>
-            <h1 className="text-base font-bold text-nido-ink">Panel Principal</h1>
-            <p className="text-xs text-nido-subtle">
-                Resumen general del estado de tu hogar · Casa Av. Siempreviva
-            </p>
-            </div>
+      <div className="mx-auto w-full max-w-7xl space-y-6 p-6 lg:p-8">
+        {error && (
+          <div className="rounded-2xl border border-nido-terracotta-border bg-nido-terracotta-bg px-4 py-3 text-xs text-nido-terracotta-text">
+            {error}
+          </div>
+        )}
 
-            <div className="flex flex-wrap items-center gap-2.5">
-            <Link
-                to="/shopping-list"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-nido-border bg-nido-surface px-3.5 py-2 text-xs font-medium text-nido-ink transition-colors hover:bg-nido-bg"
-            >
-                <ShoppingBag className="h-3.5 w-3.5 text-nido-secondary" />
-                <span>Lista de compras</span>
-            </Link>
-            <Link
-                to="/products"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-nido-olive px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-nido-olive-hover"
-            >
-                <Plus className="h-4 w-4" />
-                <span>Agregar producto</span>
-            </Link>
-            </div>
-        </header>
-
-        {/* Contenido Principal */}
-        <div className="mx-auto w-full max-w-7xl space-y-6 p-6 lg:p-8">
-            {/* KPIs superiores */}
+        {isLoading ? (
+          <p className="text-xs text-nido-muted">Cargando panel...</p>
+        ) : (
+          <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
+              <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
                 <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-nido-muted">Productos en stock</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-olive-soft text-nido-olive">
+                  <span className="text-xs font-medium text-nido-muted">Productos en stock</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-olive-soft text-nido-olive">
                     <Package className="h-4 w-4" />
+                  </div>
                 </div>
-                </div>
-                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">248</p>
-                <p className="mt-1 text-[11px] text-nido-subtle">Distribuidos en 6 contenedores</p>
-            </div>
+                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">{products.length}</p>
+                <p className="mt-1 text-[11px] text-nido-subtle">
+                  Distribuidos en {containers.length} contenedores
+                </p>
+              </div>
 
-            <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
+              <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
                 <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-nido-muted">Stock bajo / Reponer</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-terracotta-bg text-nido-terracotta-text">
+                  <span className="text-xs font-medium text-nido-muted">Stock bajo / Reponer</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-terracotta-bg text-nido-terracotta-text">
                     <AlertTriangle className="h-4 w-4" />
+                  </div>
                 </div>
-                </div>
-                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">7</p>
+                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">{lowStock.length}</p>
                 <p className="mt-1 text-[11px] font-medium text-nido-terracotta-text">
-                4 productos por debajo del mínimo
+                  {lowStock.length === 0
+                    ? 'Inventario al día'
+                    : `${lowStock.length} por debajo del mínimo`}
                 </p>
-            </div>
+              </div>
 
-            <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
+              <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
                 <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-nido-muted">Recetas listas</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-sage-bg text-nido-sage-text">
+                  <span className="text-xs font-medium text-nido-muted">Recetas listas</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-sage-bg text-nido-sage-text">
                     <ChefHat className="h-4 w-4" />
+                  </div>
                 </div>
-                </div>
-                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">4</p>
+                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">{available.length}</p>
                 <p className="mt-1 text-[11px] font-medium text-nido-sage-text">
-                De 12 recetas guardadas
+                  De {recipeTotal} recetas guardadas
                 </p>
-            </div>
+              </div>
 
-            <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
+              <div className="rounded-2xl border border-nido-border bg-nido-surface p-5">
                 <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-nido-muted">Espacios activos</span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-olive-soft text-nido-olive">
+                  <span className="text-xs font-medium text-nido-muted">Espacios activos</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nido-olive-soft text-nido-olive">
                     <Archive className="h-4 w-4" />
+                  </div>
                 </div>
-                </div>
-                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">6</p>
-                <p className="mt-1 text-[11px] text-nido-subtle">68% capacidad total ocupada</p>
-            </div>
+                <p className="mt-3 text-2xl font-bold tracking-tight text-nido-ink">{containers.length}</p>
+                <p className="mt-1 text-[11px] text-nido-subtle">Contenedores del hogar</p>
+              </div>
             </section>
 
-            {/* Grid de 2 columnas */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Columna izquierda (2/3) */}
-            <div className="space-y-6 lg:col-span-2">
-                {/* Alertas de reposición */}
+              <div className="space-y-6 lg:col-span-2">
                 <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
-                <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-4 flex items-center justify-between">
                     <div>
-                    <h2 className="text-sm font-bold text-nido-ink">Productos próximos a agotarse</h2>
-                    <p className="text-xs text-nido-muted">
-                        Insumos que cayeron por debajo de su stock mínimo configurado
-                    </p>
+                      <h2 className="text-sm font-bold text-nido-ink">Productos próximos a agotarse</h2>
+                      <p className="text-xs text-nido-muted">
+                        Insumos por debajo de su stock mínimo configurado
+                      </p>
                     </div>
                     <Link
-                    to="/products"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-nido-olive hover:underline"
+                      to="/products"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-nido-olive hover:underline"
                     >
-                    <span>Ver todos</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
+                      <span>Ver todos</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
-                </div>
+                  </div>
 
-                {LOW_STOCK_ITEMS.length === 0 ? (
+                  {lowStock.length === 0 ? (
                     <div className="flex flex-col items-center py-8 text-center">
-                    <PackageCheck className="h-8 w-8 text-nido-sage-text" />
-                    <p className="mt-3 text-sm font-semibold text-nido-ink">Inventario al día</p>
-                    <p className="mt-1 text-xs text-nido-muted">
+                      <PackageCheck className="h-8 w-8 text-nido-sage-text" />
+                      <p className="mt-3 text-sm font-semibold text-nido-ink">Inventario al día</p>
+                      <p className="mt-1 text-xs text-nido-muted">
                         Ningún producto está por debajo de su stock mínimo.
-                    </p>
+                      </p>
                     </div>
-                ) : (
-                <div className="divide-y divide-nido-border">
-                    {LOW_STOCK_ITEMS.map((item) => {
-                    const isAdded = addedToCartIds.includes(item.id);
-                    return (
-                        <div
-                        key={item.id}
-                        className="flex flex-col justify-between gap-3 py-3.5 first:pt-1 last:pb-1 sm:flex-row sm:items-center"
-                        >
-                        <div className="flex items-center gap-3">
-                            <span className="h-2 w-2 shrink-0 rounded-full bg-nido-terracotta-text" />
-                            <div>
-                            <p className="text-xs font-semibold text-nido-ink">{item.name}</p>
-                            <p className="text-[11px] text-nido-subtle">
-                                Ubicación: <span className="font-medium text-nido-secondary">{item.container}</span>
-                            </p>
+                  ) : (
+                    <div className="divide-y divide-nido-border">
+                      {lowStock.slice(0, 6).map((item) => {
+                        const isAdded = addedIds.includes(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex flex-col justify-between gap-3 py-3.5 first:pt-1 last:pb-1 sm:flex-row sm:items-center"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="h-2 w-2 shrink-0 rounded-full bg-nido-terracotta-text" />
+                              <div>
+                                <p className="text-xs font-semibold text-nido-ink">{item.name}</p>
+                                <p className="text-[11px] text-nido-subtle">
+                                  Sugerido: {item.suggested_quantity} {item.unit}
+                                </p>
+                              </div>
                             </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-4 sm:justify-end">
-                            <span className="rounded-lg bg-nido-terracotta-bg px-2.5 py-1 text-[11px] font-semibold text-nido-terracotta-text">
-                            {item.current} / {item.min} {item.unit}
-                            </span>
-
-                            <button
-                            type="button"
-                            onClick={() => handleAddToShoppingList(item.id)}
-                            disabled={isAdded}
-                            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-colors ${
-                                isAdded
-                                ? 'bg-nido-sage-bg text-nido-sage-text'
-                                : 'cursor-pointer border border-nido-border bg-nido-bg text-nido-ink hover:border-nido-olive'
-                            }`}
-                            >
-                            {isAdded ? (
-                                <>
-                                <Check className="h-3.5 w-3.5" />
-                                <span>En lista</span>
-                                </>
-                            ) : (
-                                <>
-                                <Plus className="h-3.5 w-3.5" />
-                                <span>Sumar a lista</span>
-                                </>
-                            )}
-                            </button>
-                        </div>
-                        </div>
-                    );
-                    })}
-                </div>
-                )}
+                            <div className="flex items-center justify-between gap-4 sm:justify-end">
+                              <span className="rounded-lg bg-nido-terracotta-bg px-2.5 py-1 text-[11px] font-semibold text-nido-terracotta-text">
+                                {item.current_stock} / {item.min_stock} {item.unit}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleAddToShoppingList(item.id)}
+                                disabled={isAdded}
+                                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                                  isAdded
+                                    ? 'bg-nido-sage-bg text-nido-sage-text'
+                                    : 'cursor-pointer border border-nido-border bg-nido-bg text-nido-ink hover:border-nido-olive'
+                                }`}
+                              >
+                                {isAdded ? (
+                                  <>
+                                    <Check className="h-3.5 w-3.5" />
+                                    <span>En lista</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>Sumar a lista</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
 
-                {/* Recetas listas para hoy */}
                 <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
-                <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-4 flex items-center justify-between">
                     <div>
-                    <h2 className="text-sm font-bold text-nido-ink">Listas para cocinar hoy</h2>
-                    <p className="text-xs text-nido-muted">
-                        Tenés el 100% de los ingredientes disponibles en casa
-                    </p>
+                      <h2 className="text-sm font-bold text-nido-ink">Listas para cocinar hoy</h2>
+                      <p className="text-xs text-nido-muted">
+                        Tenés el 100% de los ingredientes disponibles
+                      </p>
                     </div>
                     <Link
-                    to="/recipes"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-nido-olive hover:underline"
+                      to="/recipes"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-nido-olive hover:underline"
                     >
-                    <span>Ir a recetas</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
+                      <span>Ir a recetas</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
-                </div>
+                  </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {READY_RECIPES.map((recipe) => (
-                    <div
-                        key={recipe.id}
-                        className="flex flex-col justify-between rounded-xl border border-nido-border bg-nido-card-alt p-4"
-                    >
-                        <div>
-                        <span className="inline-block rounded-full bg-nido-surface px-2.5 py-0.5 text-[10px] font-semibold text-nido-secondary border border-nido-border">
-                            {recipe.category}
-                        </span>
-                        <h3 className="mt-2.5 text-xs font-bold text-nido-ink">{recipe.name}</h3>
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                        <div className="flex items-center justify-between text-[11px] text-nido-muted">
-                            <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {recipe.prepTime} min
-                            </span>
-                            <span className="inline-flex items-center gap-1 font-medium text-nido-sage-text">
-                            <CheckCircle2 className="h-3 w-3" />
-                            {recipe.ingredientsCount}/{recipe.ingredientsCount}
-                            </span>
-                        </div>
-                        </div>
-                    </div>
-                    ))}
-                </div>
-                </section>
-            </div>
-
-            {/* Columna derecha (1/3) */}
-            <div className="space-y-6">
-                {/* Lista de compras activa */}
-                <ActiveShoppingListCard list={ACTIVE_SHOPPING_LIST} />
-
-                {/* Distribución por contenedores */}
-                <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
-                <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-sm font-bold text-nido-ink">Espacios del hogar</h2>
-                    <Link
-                    to="/containers"
-                    className="text-xs font-semibold text-nido-olive hover:underline"
-                    >
-                    Gestionar
-                    </Link>
-                </div>
-
-                <div className="space-y-4">
-                    {CONTAINER_SUMMARIES.map((container) => (
-                    <div key={container.id}>
-                        <div className="mb-1.5 flex items-center justify-between text-xs">
-                        <span className="font-medium text-nido-ink">{container.name}</span>
-                        <span className="text-[11px] text-nido-muted">
-                            {container.itemCount} productos
-                        </span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-nido-olive-soft">
+                  {available.length === 0 ? (
+                    <p className="text-xs text-nido-muted">No hay recetas cocinables con el stock actual.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {available.slice(0, 3).map((recipe) => (
                         <div
-                            className="h-full rounded-full bg-nido-olive"
-                            style={{ width: `${container.percentage}%` }}
-                        />
+                          key={recipe.id}
+                          className="flex flex-col justify-between rounded-xl border border-nido-border bg-nido-card-alt p-4"
+                        >
+                          <h3 className="text-xs font-bold text-nido-ink">{recipe.name}</h3>
+                          <div className="mt-4 flex items-center justify-between text-[11px] text-nido-muted">
+                            <span>{recipe.servings} porciones</span>
+                            <span className="inline-flex items-center gap-1 font-medium text-nido-sage-text">
+                              <CheckCircle2 className="h-3 w-3" />
+                              {recipe.ingredient_count}/{recipe.ingredient_count}
+                            </span>
+                          </div>
                         </div>
+                      ))}
                     </div>
+                  )}
+                </section>
+              </div>
+
+              <div className="space-y-6">
+                <ActiveShoppingListCard list={shoppingCard} />
+
+                <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-sm font-bold text-nido-ink">Espacios del hogar</h2>
+                    <Link to="/containers" className="text-xs font-semibold text-nido-olive hover:underline">
+                      Gestionar
+                    </Link>
+                  </div>
+                  <div className="space-y-4">
+                    {containers.map((container) => (
+                      <div key={container.id}>
+                        <div className="mb-1.5 flex items-center justify-between text-xs">
+                          <span className="font-medium text-nido-ink">{container.name}</span>
+                          <span className="text-[11px] text-nido-muted">
+                            {container.product_count} productos
+                          </span>
+                        </div>
+                      </div>
                     ))}
-                </div>
+                    {containers.length === 0 && (
+                      <p className="text-xs text-nido-muted">Todavía no hay contenedores.</p>
+                    )}
+                  </div>
                 </section>
 
-                {/* Actividad reciente */}
                 <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
-                <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-sm font-bold text-nido-ink">Movimientos recientes</h2>
                     <ArrowUpDown className="h-4 w-4 text-nido-subtle" />
-                </div>
-
-                <div className="space-y-3.5">
-                    {RECENT_MOVEMENTS.map((mov) => (
-                    <div
-                        key={mov.id}
-                        className="flex items-start justify-between gap-3 border-b border-nido-border pb-3 last:border-none last:pb-0"
-                    >
-                        <div>
-                        <p className="text-xs font-semibold text-nido-ink">{mov.product}</p>
-                        <p className="text-[11px] text-nido-muted">{mov.reason}</p>
-                        <p className="mt-0.5 text-[10px] text-nido-subtle">{mov.time}</p>
-                        </div>
-                        <span
-                        className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
-                            mov.isPositive
-                            ? 'bg-nido-sage-bg text-nido-sage-text'
-                            : 'bg-nido-terracotta-bg text-nido-terracotta-text'
-                        }`}
+                  </div>
+                  <div className="space-y-3.5">
+                    {movements.map((mov) => {
+                      const isPositive = mov.quantity_change > 0;
+                      return (
+                        <div
+                          key={mov.id}
+                          className="flex items-start justify-between gap-3 border-b border-nido-border pb-3 last:border-none last:pb-0"
                         >
-                        {mov.delta}
-                        </span>
-                    </div>
-                    ))}
-                </div>
+                          <div>
+                            <p className="text-xs font-semibold text-nido-ink">{mov.product_name}</p>
+                            <p className="text-[11px] text-nido-muted">{mov.reason ?? mov.type}</p>
+                            <p className="mt-0.5 text-[10px] text-nido-subtle">
+                              {new Date(mov.created_at).toLocaleString('es-AR')}
+                            </p>
+                          </div>
+                          <span
+                            className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
+                              isPositive
+                                ? 'bg-nido-sage-bg text-nido-sage-text'
+                                : 'bg-nido-terracotta-bg text-nido-terracotta-text'
+                            }`}
+                          >
+                            {isPositive ? '+' : ''}
+                            {mov.quantity_change} {mov.unit}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {movements.length === 0 && (
+                      <p className="text-xs text-nido-muted">Sin movimientos todavía.</p>
+                    )}
+                  </div>
                 </section>
+              </div>
             </div>
-            </div>
-        </div>
-        </div>
-    );
+          </>
+        )}
+      </div>
+    </div>
+  );
 };
