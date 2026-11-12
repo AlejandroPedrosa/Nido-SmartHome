@@ -43,6 +43,7 @@ export interface ProductContainer {
   name: string;
 }
 
+/** Producto con sus contenedores (GET /products y GET /products/:id, PR-01). */
 export interface ProductDetail extends Product {
   containers: ProductContainer[];
 }
@@ -58,6 +59,8 @@ export interface CreateProductPayload {
   current_stock?: number;
   min_stock?: number;
   reorder_quantity?: number | null;
+  /** Contenedores asignados, en la misma transacción que el alta (CT-01). */
+  container_ids?: string[];
 }
 
 export interface UpdateProductPayload {
@@ -66,6 +69,8 @@ export interface UpdateProductPayload {
   unit?: ProductUnit;
   min_stock?: number;
   reorder_quantity?: number | null;
+  /** Reemplaza los contenedores asignados (`[]` desvincula todos). */
+  container_ids?: string[];
 }
 
 export interface ProductQuery {

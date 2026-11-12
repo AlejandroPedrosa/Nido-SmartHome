@@ -4,7 +4,12 @@ import { Modal } from '@/components/ui/Modal';
 import { ApiError } from '@/lib/api';
 import { useContainersStore } from '@/stores/useContainersStore';
 import { useProductsStore } from '@/stores/useProductsStore';
-import type { CreateProductPayload, Product, ProductUnit, UpdateProductPayload } from '@/types';
+import type {
+  CreateProductPayload,
+  ProductDetail,
+  ProductUnit,
+  UpdateProductPayload,
+} from '@/types';
 
 const PRODUCT_UNITS: ProductUnit[] = ['unidad', 'g', 'kg', 'ml', 'l', 'paquete', 'botella'];
 
@@ -13,7 +18,7 @@ const inputClasses =
 
 interface ProductFormProps {
   /** Si viene, el modal funciona en modo edición (el stock no se edita, solo se ajusta). */
-  product?: Product;
+  product?: ProductDetail;
   /** Nombres ya usados, para validar unicidad en cliente antes del 409 de la API. */
   existingNames?: string[];
   onSuccess: () => void;
@@ -31,7 +36,6 @@ export const ProductForm: FC<ProductFormProps> = ({
   const fetchContainers = useContainersStore((s) => s.fetchContainers);
   const createProduct = useProductsStore((s) => s.createProduct);
   const updateProduct = useProductsStore((s) => s.updateProduct);
-  const fetchProductDetail = useProductsStore((s) => s.fetchProductDetail);
 
   const [name, setName] = useState(product?.name ?? '');
   const [category, setCategory] = useState(product?.category ?? '');
@@ -41,38 +45,17 @@ export const ProductForm: FC<ProductFormProps> = ({
   const [reorderQuantity, setReorderQuantity] = useState(
     product?.reorder_quantity != null ? String(product.reorder_quantity) : '',
   );
-  const [containerIds, setContainerIds] = useState<string[]>([]);
-  const [previousContainerIds, setPreviousContainerIds] = useState<string[]>([]);
+  const [containerIds, setContainerIds] = useState<string[]>(
+    () => product?.containers.map((c) => c.id) ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingContainers, setIsLoadingContainers] = useState(isEdit);
 
   useEffect(() => {
     if (containers.length === 0) {
       void fetchContainers();
     }
   }, [containers.length, fetchContainers]);
-
-  useEffect(() => {
-    if (!product) return;
-    let cancelled = false;
-    void fetchProductDetail(product.id)
-      .then((detail) => {
-        if (cancelled) return;
-        const ids = detail.containers.map((c) => c.id);
-        setContainerIds(ids);
-        setPreviousContainerIds(ids);
-        setIsLoadingContainers(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'No se pudo cargar el producto.');
-        setIsLoadingContainers(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [product, fetchProductDetail]);
 
   const toggleContainer = (id: string) => {
     setContainerIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
@@ -114,8 +97,9 @@ export const ProductForm: FC<ProductFormProps> = ({
           unit,
           min_stock: Math.max(0, Number(minStock) || 0),
           reorder_quantity: reorder,
+          container_ids: containerIds,
         };
-        await updateProduct(product.id, payload, containerIds, previousContainerIds);
+        await updateProduct(product.id, payload);
       } else {
         const payload: CreateProductPayload = {
           name: trimmed,
@@ -124,8 +108,9 @@ export const ProductForm: FC<ProductFormProps> = ({
           current_stock: Math.max(0, Number(currentStock) || 0),
           min_stock: Math.max(0, Number(minStock) || 0),
           reorder_quantity: reorder,
+          container_ids: containerIds,
         };
-        await createProduct(payload, containerIds);
+        await createProduct(payload);
       }
       onSuccess();
     } catch (err) {
@@ -158,7 +143,7 @@ export const ProductForm: FC<ProductFormProps> = ({
           <button
             type="submit"
             form="product-form"
-            disabled={isSubmitting || isLoadingContainers}
+            disabled={isSubmitting}
             className="cursor-pointer rounded-xl bg-nido-olive px-4 py-2 text-xs font-semibold text-white hover:bg-nido-olive-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Guardar producto'}
@@ -270,9 +255,7 @@ export const ProductForm: FC<ProductFormProps> = ({
 
         <fieldset>
           <legend className="mb-1.5 block text-xs font-medium text-nido-ink">Contenedores</legend>
-          {isLoadingContainers ? (
-            <p className="text-xs text-nido-subtle">Cargando contenedores…</p>
-          ) : containers.length === 0 ? (
+          {containers.length === 0 ? (
             <p className="text-xs text-nido-subtle">No hay contenedores creados todavía.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">

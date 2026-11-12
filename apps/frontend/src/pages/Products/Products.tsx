@@ -31,13 +31,11 @@ type ActiveModal =
 
 export const Products: FC = () => {
   const products = useProductsStore((s) => s.products);
-  const containerNamesByProductId = useProductsStore((s) => s.containerNamesByProductId);
   const filters = useProductsStore((s) => s.filters);
   const isLoading = useProductsStore((s) => s.isLoading);
   const error = useProductsStore((s) => s.error);
   const setFilters = useProductsStore((s) => s.setFilters);
   const fetchProducts = useProductsStore((s) => s.fetchProducts);
-  const fetchContainerMap = useProductsStore((s) => s.fetchContainerMap);
   const deleteProduct = useProductsStore((s) => s.deleteProduct);
 
   const containers = useContainersStore((s) => s.containers);
@@ -52,9 +50,8 @@ export const Products: FC = () => {
 
   useEffect(() => {
     void fetchProducts();
-    void fetchContainerMap();
     void fetchContainers();
-  }, [fetchProducts, fetchContainerMap, fetchContainers]);
+  }, [fetchProducts, fetchContainers]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -114,7 +111,6 @@ export const Products: FC = () => {
       await deleteProduct(modalProduct.id);
       setModal(null);
       showToast(`Producto "${modalProduct.name}" eliminado junto con su historial.`);
-      void fetchContainerMap();
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 409) {
         setDeleteError(err.message);
@@ -271,7 +267,6 @@ export const Products: FC = () => {
               </thead>
               <tbody className="divide-y divide-nido-border text-xs">
                 {products.map((product) => {
-                  const containerNames = containerNamesByProductId[product.id] ?? [];
                   const isMenuOpen = openMenuId === product.id;
 
                   return (
@@ -297,15 +292,15 @@ export const Products: FC = () => {
 
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-1">
-                          {containerNames.length === 0 ? (
+                          {product.containers.length === 0 ? (
                             <span className="text-nido-subtle">—</span>
                           ) : (
-                            containerNames.map((container) => (
+                            product.containers.map((container) => (
                               <span
-                                key={container}
+                                key={container.id}
                                 className="rounded-lg border border-nido-border bg-nido-card-alt px-2 py-0.5 text-[11px] font-medium text-nido-secondary"
                               >
-                                {container}
+                                {container.name}
                               </span>
                             ))
                           )}

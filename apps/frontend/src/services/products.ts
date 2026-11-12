@@ -2,7 +2,6 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api';
 import type {
   CreateProductPayload,
   LowStockProduct,
-  Product,
   ProductDetail,
   ProductQuery,
   UpdateProductPayload,
@@ -19,8 +18,9 @@ function toQuery(params?: ProductQuery): Record<string, string> | undefined {
 }
 
 export const productsService = {
-  list(params?: ProductQuery): Promise<Product[]> {
-    return apiGet<Product[]>('/products', { params: toQuery(params) });
+  /** Cada producto incluye sus contenedores (PR-01). */
+  list(params?: ProductQuery): Promise<ProductDetail[]> {
+    return apiGet<ProductDetail[]>('/products', { params: toQuery(params) });
   },
 
   lowStock(): Promise<LowStockProduct[]> {
@@ -31,12 +31,12 @@ export const productsService = {
     return apiGet<ProductDetail>(`/products/${id}`);
   },
 
-  create(payload: CreateProductPayload): Promise<Product> {
-    return apiPost<Product>('/products', payload);
+  create(payload: CreateProductPayload): Promise<ProductDetail> {
+    return apiPost<ProductDetail>('/products', payload);
   },
 
-  update(id: string, payload: UpdateProductPayload): Promise<Product> {
-    return apiPatch<Product>(`/products/${id}`, payload);
+  update(id: string, payload: UpdateProductPayload): Promise<ProductDetail> {
+    return apiPatch<ProductDetail>(`/products/${id}`, payload);
   },
 
   remove(id: string): Promise<void> {
