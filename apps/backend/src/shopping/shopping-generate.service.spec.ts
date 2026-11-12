@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { InventoryService } from '../inventory';
 import { ShoppingService } from './shopping.service';
 
 const lowStock = [
@@ -64,9 +65,12 @@ describe('ShoppingService.generate (RF-12)', () => {
       }),
       release: jest.fn(),
     };
-    service = new ShoppingService({
-      connect: jest.fn().mockResolvedValue(client),
-    } as unknown as Pool);
+    service = new ShoppingService(
+      {
+        connect: jest.fn().mockResolvedValue(client),
+      } as unknown as Pool,
+      {} as InventoryService,
+    );
   });
 
   it('sin lista activa crea una con los faltantes y sus cantidades sugeridas', async () => {

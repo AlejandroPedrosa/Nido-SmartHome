@@ -64,4 +64,17 @@ export class ShoppingController {
       dto.purchased,
     );
   }
+
+  /**
+   * RF-14: confirma la compra: suma al stock los ítems comprados y archiva
+   * la lista. 409 si ya estaba confirmada; 400 si no hay ítems comprados.
+   */
+  @Post(':id/purchase')
+  @HttpCode(HttpStatus.OK)
+  purchase(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+  ): Promise<ShoppingListDetail> {
+    return this.shoppingService.purchase(userId, id);
+  }
 }

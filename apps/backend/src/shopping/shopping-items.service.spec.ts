@@ -3,6 +3,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { Pool } from 'pg';
+import { InventoryService } from '../inventory';
 import { SetItemPurchasedDto } from './dto/set-item-purchased.dto';
 import { ShoppingService } from './shopping.service';
 
@@ -36,9 +37,12 @@ describe('ShoppingService.setItemPurchased (RF-13)', () => {
       }),
       release: jest.fn(),
     };
-    service = new ShoppingService({
-      connect: jest.fn().mockResolvedValue(client),
-    } as unknown as Pool);
+    service = new ShoppingService(
+      {
+        connect: jest.fn().mockResolvedValue(client),
+      } as unknown as Pool,
+      {} as InventoryService,
+    );
   });
 
   it('bloquea la lista, actualiza el ítem y devuelve la lista', async () => {

@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { InventoryService } from '../inventory';
 import { ShoppingService } from './shopping.service';
 
 const list = {
@@ -13,7 +14,10 @@ const list = {
 
 describe('ShoppingService (consultas)', () => {
   const pool = { query: jest.fn() };
-  const service = new ShoppingService(pool as unknown as Pool);
+  const service = new ShoppingService(
+    pool as unknown as Pool,
+    {} as InventoryService,
+  );
 
   const sqlOf = (index: number) =>
     (pool.query.mock.calls[index][0] as string).replace(/\s+/g, ' ');

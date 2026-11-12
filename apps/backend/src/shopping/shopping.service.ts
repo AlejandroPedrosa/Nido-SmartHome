@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -7,6 +8,7 @@ import {
 import { Pool, PoolClient } from 'pg';
 import { getSuggestedQuantity } from '../common/utils/suggested-quantity';
 import { PG_POOL, withTransaction } from '../database';
+import { InventoryService, MovementType } from '../inventory';
 import {
   LIST_SUMMARY_COLUMNS,
   ShoppingListDetail,
@@ -26,7 +28,66 @@ interface LowStockRow {
 /** RF-12 a RF-14: listas de compras de reposición. */
 @Injectable()
 export class ShoppingService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly inventoryService: InventoryService,
+  ) {}
+
+  /**
+   * RF-14: confirma la compra en una única transacción (flujo 7.4).
+   *
+   * - Bloquea la lista: dos confirmaciones simultáneas se serializan y la
+   *   segunda ve la lista ya cerrada → 409 (LC-04).
+   * - 400 si no hay ítems marcados como comprados (LC-05).
+   * - Suma al stock únicamente los ítems comprados (RS-05), cada uno con un
+   *   movimiento `shopping` a través de InventoryService (AU-01).
+   * - Archiva la lista (`is_purchased = true`, `purchased_at = NOW()`). Los
+   *   ítems no comprados quedan en la lista archivada como registro; si
+   *   siguen faltando, la próxima generación los incluye en una lista nueva.
+   */
+  async purchase(userId: string, listId: string): Promise<ShoppingListDetail> {
+    return withTransaction(this.pool, async (client) => {
+      await this.lockOpenList(client, userId, listId);
+
+      const { rows: purchased } = await client.query<{
+        product_id: string;
+        suggested_quantity: number;
+      }>(
+        `SELECT product_id, suggested_quantity
+           FROM shopping_list_items
+          WHERE shopping_list_id = $1 AND purchased
+          ORDER BY product_id`,
+        [listId],
+      );
+      if (purchased.length === 0) {
+        throw new BadRequestException(
+          'No hay artículos marcados como comprados',
+        );
+      }
+
+      for (const item of purchased) {
+        await this.inventoryService.applyMovement(
+          {
+            userId,
+            productId: item.product_id,
+            quantityChange: item.suggested_quantity,
+            type: MovementType.Shopping,
+            reason: 'Compra confirmada',
+          },
+          client,
+        );
+      }
+
+      await client.query(
+        `UPDATE shopping_lists
+            SET is_purchased = TRUE, purchased_at = NOW()
+          WHERE id = $1`,
+        [listId],
+      );
+
+      return this.loadList(client, userId, listId);
+    });
+  }
 
   /** Historial del usuario: la lista activa primero, luego por fecha. */
   async findAll(userId: string): Promise<ShoppingListSummary[]> {
