@@ -4,8 +4,8 @@ import {
     Archive,
     ChefHat,
     LayoutGrid,
+    LogOut,
     Menu,
-    MoreHorizontal,
     Package,
     Settings,
     ShoppingBag,
@@ -121,9 +121,10 @@ export const AppLayout: FC = () => {
                 type="button"
                 onClick={() => navigate('/login')}
                 title="Cerrar sesión"
+                aria-label="Cerrar sesión"
                 className="cursor-pointer rounded-lg p-1.5 text-nido-subtle transition-colors hover:bg-nido-bg hover:text-nido-ink"
                 >
-                <MoreHorizontal className="h-4 w-4" />
+                <LogOut className="h-4 w-4" />
                 </button>
             </div>
             </div>

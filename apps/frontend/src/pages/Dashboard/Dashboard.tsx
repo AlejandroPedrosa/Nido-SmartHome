@@ -11,8 +11,10 @@ import {
     Clock,
     Package,
     Plus,
+    PackageCheck,
     ShoppingBag,
     } from 'lucide-react';
+import { ActiveShoppingListCard } from '@/pages/Dashboard/ActiveShoppingListCard';
 
     interface LowStockItem {
     id: string;
@@ -88,6 +90,11 @@ import {
         isPositive: false,
     },
     ];
+
+    const ACTIVE_SHOPPING_LIST: { purchasedCount: number; totalCount: number } | null = {
+    purchasedCount: 1,
+    totalCount: 5,
+    };
 
     const READY_RECIPES: ReadyRecipe[] = [
     { id: '1', name: 'Tortilla de patatas', category: 'Clásicos', prepTime: 35, ingredientsCount: 5 },
@@ -206,6 +213,15 @@ import {
                     </Link>
                 </div>
 
+                {LOW_STOCK_ITEMS.length === 0 ? (
+                    <div className="flex flex-col items-center py-8 text-center">
+                    <PackageCheck className="h-8 w-8 text-nido-sage-text" />
+                    <p className="mt-3 text-sm font-semibold text-nido-ink">Inventario al día</p>
+                    <p className="mt-1 text-xs text-nido-muted">
+                        Ningún producto está por debajo de su stock mínimo.
+                    </p>
+                    </div>
+                ) : (
                 <div className="divide-y divide-nido-border">
                     {LOW_STOCK_ITEMS.map((item) => {
                     const isAdded = addedToCartIds.includes(item.id);
@@ -256,6 +272,7 @@ import {
                     );
                     })}
                 </div>
+                )}
                 </section>
 
                 {/* Recetas listas para hoy */}
@@ -309,6 +326,9 @@ import {
 
             {/* Columna derecha (1/3) */}
             <div className="space-y-6">
+                {/* Lista de compras activa */}
+                <ActiveShoppingListCard list={ACTIVE_SHOPPING_LIST} />
+
                 {/* Distribución por contenedores */}
                 <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
                 <div className="mb-4 flex items-center justify-between">

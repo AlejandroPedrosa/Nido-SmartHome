@@ -18,7 +18,7 @@ export const Login: FC = () => {
         return;
         }
         setError(null);
-        navigate('/recipes');
+        navigate('/dashboard');
     };
 
     return (

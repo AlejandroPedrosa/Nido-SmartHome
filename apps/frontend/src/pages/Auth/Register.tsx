@@ -1,124 +1,175 @@
-import React, { useState } from 'react';
+import { useState, type FC, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { NidoLogo } from '@/components/ui/NidoLogo';
 
-export const Register: React.FC = () => {
+/** Correo de ejemplo para mostrar el estado "correo ya registrado" (HTTP 409). */
+const REGISTERED_EMAIL = 'usuario@ejemplo.com';
+
+const inputClasses =
+    'w-full rounded-xl border border-nido-border-strong bg-nido-surface py-2.5 pr-10 pl-10 text-xs text-nido-ink placeholder:text-nido-subtle transition-all focus:border-nido-olive focus:ring-2 focus:ring-nido-olive/10 focus:outline-none';
+
+export const Register: FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!email.trim() || !password.trim()) {
-        setError('Completá todos los campos obligatorios.');
-        return;
+            setError('Completá todos los campos obligatorios.');
+            return;
         }
         if (password.length < 6) {
-        setError('La contraseña debe tener al menos 6 caracteres.');
-        return;
+            setError('La contraseña debe tener al menos 6 caracteres.');
+            return;
         }
         if (password !== confirmPassword) {
-        setError('Las contraseñas no coinciden.');
-        return;
+            setError('Las contraseñas no coinciden.');
+            return;
+        }
+        if (email.trim().toLowerCase() === REGISTERED_EMAIL) {
+            setError('Ese correo ya está registrado (HTTP 409). Probá iniciando sesión.');
+            return;
         }
         setError(null);
         navigate('/dashboard');
     };
 
     return (
-        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-indigo-600 p-8 text-center text-white">
-            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center font-bold text-2xl mx-auto mb-3">
-                N
-            </div>
-            <h2 className="text-2xl font-bold">Creá tu hogar en NIDO</h2>
-            <p className="text-indigo-100 text-sm mt-1">
-                Precargamos tus espacios iniciales automáticamente
-            </p>
-            </div>
+        <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-nido-bg text-nido-ink">
+            {/* Fondo cálido difuminado */}
+            <div
+                className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-35"
+                style={{
+                    backgroundImage:
+                        "url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1920&q=80')",
+                }}
+            />
+            <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-nido-bg/80 via-nido-bg/65 to-nido-card-alt/85" />
 
-            <form onSubmit={handleSubmit} className="p-8 space-y-4">
-            {error && (
-                <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 text-sm p-3 rounded-xl">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
+            <header className="relative z-10 flex w-full items-center justify-between px-6 py-5 sm:px-10">
+                <NidoLogo size="sm" />
+            </header>
+
+            <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-8">
+                <div className="w-full max-w-102.5 rounded-3xl border border-nido-border bg-nido-surface/95 px-8 py-10 shadow-[0_20px_50px_rgba(30,34,29,0.06)] backdrop-blur-md">
+                    <div className="mb-7 text-center">
+                        <div className="mb-4 flex justify-center">
+                            <NidoLogo />
+                        </div>
+                        <h1 className="text-[22px] font-bold tracking-tight text-nido-ink">Creá tu hogar en NIDO</h1>
+                        <p className="mt-1 text-xs text-nido-muted">
+                            Precargamos tus espacios iniciales automáticamente
+                        </p>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        {error && (
+                            <div
+                                role="alert"
+                                className="flex items-center gap-2 rounded-xl border border-nido-terracotta-border bg-nido-terracotta-bg p-3 text-xs text-nido-terracotta-text"
+                            >
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                <span>{error}</span>
+                            </div>
+                        )}
+
+                        <div>
+                            <label htmlFor="register-email" className="mb-1.5 block text-xs font-medium text-nido-ink">
+                                Correo electrónico
+                            </label>
+                            <div className="relative">
+                                <Mail className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-nido-subtle" />
+                                <input
+                                    id="register-email"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="tu@email.com"
+                                    className={inputClasses}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="register-password" className="mb-1.5 block text-xs font-medium text-nido-ink">
+                                Contraseña
+                            </label>
+                            <div className="relative">
+                                <Lock className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-nido-subtle" />
+                                <input
+                                    id="register-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Mínimo 6 caracteres"
+                                    className={inputClasses}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword((prev) => !prev)}
+                                    aria-label="Mostrar u ocultar contraseña"
+                                    className="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer text-nido-subtle hover:text-nido-ink"
+                                >
+                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label
+                                htmlFor="register-confirm-password"
+                                className="mb-1.5 block text-xs font-medium text-nido-ink"
+                            >
+                                Confirmar contraseña
+                            </label>
+                            <div className="relative">
+                                <Lock className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-nido-subtle" />
+                                <input
+                                    id="register-confirm-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    placeholder="Repetí tu contraseña"
+                                    className={inputClasses}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex items-start gap-2 rounded-xl border border-nido-border bg-nido-card-alt p-3 text-[11px] text-nido-secondary">
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-nido-sage-text" />
+                            <span>
+                                Al registrarte se crearán por defecto:{' '}
+                                <strong className="text-nido-ink">
+                                    Cocina, Heladera, Freezer, Alacena, Baño y Lavadero
+                                </strong>
+                                .
+                            </span>
+                        </div>
+
+                        <button
+                            type="submit"
+                            className="mt-2 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-nido-olive py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-nido-olive-hover"
+                        >
+                            <span>Crear cuenta</span>
+                            <ArrowRight className="h-4 w-4" />
+                        </button>
+
+                        <p className="pt-4 text-center text-[11px] text-nido-muted">
+                            ¿Ya tenés cuenta?{' '}
+                            <Link to="/login" className="font-bold text-nido-ink hover:underline">
+                                Iniciá sesión
+                            </Link>
+                        </p>
+                    </form>
                 </div>
-            )}
+            </main>
 
-            <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Correo electrónico
-                </label>
-                <div className="relative">
-                <Mail className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="tu@email.com"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
-                </div>
-            </div>
-
-            <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Contraseña
-                </label>
-                <div className="relative">
-                <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
-                </div>
-            </div>
-
-            <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Confirmar contraseña
-                </label>
-                <div className="relative">
-                <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repetí tu contraseña"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-                />
-                </div>
-            </div>
-
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs text-slate-600 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                Al registrarte se crearán por defecto: <strong>Cocina, Heladera, Freezer, Alacena, Baño y Lavadero</strong>.
-                </span>
-            </div>
-
-            <button
-                type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-                <span>Crear cuenta</span>
-                <ArrowRight className="w-4 h-4" />
-            </button>
-
-            <p className="pt-3 text-center border-t border-slate-100 text-sm text-slate-600">
-                ¿Ya tenés cuenta?{' '}
-                <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">
-                Iniciá sesión
-                </Link>
-            </p>
-            </form>
-        </div>
+            <div className="h-6" />
         </div>
     );
 };

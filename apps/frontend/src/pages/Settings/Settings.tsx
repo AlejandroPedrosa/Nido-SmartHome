@@ -1,5 +1,9 @@
 import { useState, type FC, type FormEvent } from 'react';
-import { Bell, CheckCircle2, Home, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bell, CheckCircle2, Home, LogOut, Mail, User } from 'lucide-react';
+
+/** Dato de ejemplo: viene de `GET /auth/me`. */
+const ACCOUNT_EMAIL = 'usuario@ejemplo.com';
 
 export const Settings: FC = () => {
     const [homeName, setHomeName] = useState('Casa Av. Siempreviva');
@@ -22,6 +26,35 @@ export const Settings: FC = () => {
             Preferencias de tu perfil, hogar y alertas de reposición
             </p>
         </header>
+
+        <div className="mx-auto w-full max-w-3xl space-y-6 p-6 pb-0 lg:p-8 lg:pb-0">
+            <section className="rounded-2xl border border-nido-border bg-nido-surface p-6">
+            <div className="mb-4 flex items-center gap-2 text-sm font-bold text-nido-ink">
+                <User className="h-4 w-4 text-nido-olive" />
+                <h2>Mi cuenta</h2>
+            </div>
+
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-nido-border-strong bg-nido-olive-soft text-nido-olive">
+                    <Mail className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                    <p className="text-[11px] text-nido-subtle">Sesión iniciada como</p>
+                    <p className="truncate text-sm font-semibold text-nido-ink">{ACCOUNT_EMAIL}</p>
+                </div>
+                </div>
+
+                <Link
+                to="/login"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-nido-terracotta-border bg-nido-terracotta-bg px-4 py-2 text-xs font-semibold text-nido-terracotta-text transition-colors hover:opacity-90"
+                >
+                <LogOut className="h-4 w-4" />
+                <span>Cerrar sesión</span>
+                </Link>
+            </div>
+            </section>
+        </div>
 
         <form onSubmit={handleSave} className="mx-auto w-full max-w-3xl space-y-6 p-6 lg:p-8">
             {saved && (
