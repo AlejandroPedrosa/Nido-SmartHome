@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -29,7 +30,9 @@ export class ShoppingController {
 
   /**
    * RF-12: genera o sincroniza la lista activa con los productos bajo
-   * mínimo. Responde 200 con la lista, o con `[]` si no hay faltantes (LC-06).
+   * mínimo. Responde 200 con la lista, o con `[]` si no hay faltantes y no
+   * queda lista activa (LC-06). Si no hay faltantes pero la activa conserva
+   * ítems comprados, la devuelve para poder confirmarla.
    * Declarada antes de `:id`.
    */
   @Post('generate')
@@ -63,6 +66,21 @@ export class ShoppingController {
       productId,
       dto.purchased,
     );
+  }
+
+  /**
+   * Quita un ítem de la lista (204). Si el producto sigue bajo mínimo,
+   * vuelve en la próxima sincronización; si la lista queda vacía, se
+   * elimina. 409 si ya fue confirmada; 404 si es ajena o el ítem no está.
+   */
+  @Delete(':id/items/:productId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeItem(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+    @Param('productId', uuidParam('productId')) productId: string,
+  ): Promise<void> {
+    return this.shoppingService.removeItem(userId, id, productId);
   }
 
   /**
