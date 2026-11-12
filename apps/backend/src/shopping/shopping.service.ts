@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
-import { PG_POOL } from '../database';
+import { getSuggestedQuantity } from '../common/utils/suggested-quantity';
+import { PG_POOL, withTransaction } from '../database';
 import {
   LIST_SUMMARY_COLUMNS,
   ShoppingListDetail,
@@ -9,6 +10,13 @@ import {
 } from './interfaces/shopping-list.interface';
 
 type Queryable = Pick<Pool | PoolClient, 'query'>;
+
+interface LowStockRow {
+  id: string;
+  current_stock: number;
+  min_stock: number;
+  reorder_quantity: number | null;
+}
 
 /** RF-12 a RF-14: listas de compras de reposición. */
 @Injectable()
@@ -25,6 +33,88 @@ export class ShoppingService {
       [userId],
     );
     return rows;
+  }
+
+  /**
+   * RF-12: genera o sincroniza la lista activa (flujo 7.3), en una
+   * transacción:
+   *
+   * - LC-01 / LC-02: incluye los productos con current_stock < min_stock y
+   *   la cantidad sugerida de RS-02.
+   * - LC-03: como máximo una lista activa. Los ítems ya marcados como
+   *   comprados se preservan tal cual; los pendientes se actualizan y se
+   *   eliminan los que ya no están bajo el mínimo.
+   * - LC-06: si no hay faltantes no se crea ninguna lista, se depuran los
+   *   pendientes de la activa (o se elimina si queda vacía) y se responde
+   *   un array vacío.
+   */
+  async generate(userId: string): Promise<ShoppingListDetail | []> {
+    return withTransaction(this.pool, async (client) => {
+      const { rows: lowStock } = await client.query<LowStockRow>(
+        `SELECT id, current_stock, min_stock, reorder_quantity
+           FROM products
+          WHERE user_id = $1 AND current_stock < min_stock`,
+        [userId],
+      );
+
+      // Bloquea la lista activa: dos generaciones simultáneas se serializan.
+      let listId = await this.findActiveListId(client, userId);
+
+      if (lowStock.length === 0) {
+        if (listId) {
+          await client.query(
+            `DELETE FROM shopping_list_items
+              WHERE shopping_list_id = $1 AND NOT purchased`,
+            [listId],
+          );
+          await client.query(
+            `DELETE FROM shopping_lists l
+              WHERE l.id = $1
+                AND NOT EXISTS (SELECT 1 FROM shopping_list_items i
+                                 WHERE i.shopping_list_id = l.id)`,
+            [listId],
+          );
+        }
+        return [];
+      }
+
+      if (!listId) {
+        listId = await this.createActiveList(client, userId);
+      }
+
+      const productIds = lowStock.map((product) => product.id);
+      const quantities = lowStock.map((product) =>
+        getSuggestedQuantity({
+          currentStock: product.current_stock,
+          minStock: product.min_stock,
+          reorderQuantity: product.reorder_quantity,
+        }),
+      );
+
+      // Pendientes cuyo producto ya recuperó stock (LC-03).
+      await client.query(
+        `DELETE FROM shopping_list_items
+          WHERE shopping_list_id = $1
+            AND NOT purchased
+            AND product_id <> ALL($2::uuid[])`,
+        [listId, productIds],
+      );
+
+      // Inserta faltantes nuevos y actualiza la cantidad de los pendientes;
+      // los ya comprados no se tocan.
+      await client.query(
+        `INSERT INTO shopping_list_items
+                (shopping_list_id, product_id, suggested_quantity)
+         SELECT $1, product_id, quantity
+           FROM unnest($2::uuid[], $3::numeric[]) AS f(product_id, quantity)
+         ON CONFLICT (shopping_list_id, product_id) DO UPDATE
+            SET suggested_quantity = EXCLUDED.suggested_quantity
+          WHERE NOT shopping_list_items.purchased`,
+        [listId, productIds, quantities],
+      );
+
+      return this.loadList(client, userId, listId);
+    });
   }
 
   /** Lista con sus ítems. 404 si no existe o es ajena (MT-03). */
@@ -62,5 +152,45 @@ export class ShoppingService {
     );
 
     return { ...list.rows[0], items: items.rows };
+  }
+
+  /** Id de la lista activa del usuario, bloqueada hasta el fin de la transacción. */
+  private async findActiveListId(
+    client: PoolClient,
+    userId: string,
+  ): Promise<string | null> {
+    const { rows } = await client.query<{ id: string }>(
+      `SELECT id FROM shopping_lists
+        WHERE user_id = $1 AND NOT is_purchased
+          FOR UPDATE`,
+      [userId],
+    );
+    return rows[0]?.id ?? null;
+  }
+
+  /**
+   * Crea la lista activa. Si otra petición la creó en el mismo instante, el
+   * índice único parcial (`shopping_lists_one_active_per_user`) evita el
+   * duplicado y se reutiliza la existente.
+   */
+  private async createActiveList(
+    client: PoolClient,
+    userId: string,
+  ): Promise<string> {
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO shopping_lists (user_id)
+       VALUES ($1)
+       ON CONFLICT (user_id) WHERE is_purchased = FALSE DO NOTHING
+    RETURNING id`,
+      [userId],
+    );
+    if (rows[0]) {
+      return rows[0].id;
+    }
+    const existing = await this.findActiveListId(client, userId);
+    if (!existing) {
+      throw new Error('No se pudo obtener la lista de compras activa');
+    }
+    return existing;
   }
 }
