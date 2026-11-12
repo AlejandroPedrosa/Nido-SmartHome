@@ -29,7 +29,9 @@ export class ShoppingController {
 
   /**
    * RF-12: genera o sincroniza la lista activa con los productos bajo
-   * mínimo. Responde 200 con la lista, o con `[]` si no hay faltantes (LC-06).
+   * mínimo. Responde 200 con la lista, o con `[]` si no hay faltantes y no
+   * queda lista activa (LC-06). Si no hay faltantes pero la activa conserva
+   * ítems comprados, la devuelve para poder confirmarla.
    * Declarada antes de `:id`.
    */
   @Post('generate')

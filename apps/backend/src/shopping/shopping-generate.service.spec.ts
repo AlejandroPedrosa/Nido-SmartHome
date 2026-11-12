@@ -22,6 +22,7 @@ describe('ShoppingService.generate (RF-12)', () => {
   let lowRows: object[];
   let activeRows: object[];
   let insertedListRows: object[];
+  let deletedLists: number;
 
   const sql = (): string[] =>
     client.query.mock.calls.map(([text]) =>
@@ -36,9 +37,13 @@ describe('ShoppingService.generate (RF-12)', () => {
     lowRows = lowStock;
     activeRows = [];
     insertedListRows = [{ id: 'list-new' }];
+    deletedLists = 1;
     client = {
       query: jest.fn((text: string) => {
         const q = text.replace(/\s+/g, ' ');
+        if (q.includes('DELETE FROM shopping_lists l')) {
+          return Promise.resolve({ rows: [], rowCount: deletedLists });
+        }
         if (q.includes('current_stock < min_stock')) {
           return Promise.resolve({ rows: lowRows, rowCount: lowRows.length });
         }
@@ -164,6 +169,23 @@ describe('ShoppingService.generate (RF-12)', () => {
         ),
       );
       expect(statements.at(-1)).toBe('COMMIT');
+    });
+
+    it('si la activa conserva ítems comprados, la devuelve para poder confirmarla', async () => {
+      activeRows = [{ id: 'list-1' }];
+      deletedLists = 0;
+
+      const result = await service.generate('user-1');
+
+      expect(result).toMatchObject({ id: 'list-1' });
+      expect(paramsOf('WHERE l.id = $1 AND l.user_id = $2')).toEqual([
+        'list-1',
+        'user-1',
+      ]);
+      expect(sql()).not.toContainEqual(
+        expect.stringContaining('INSERT INTO shopping_list'),
+      );
+      expect(sql().at(-1)).toBe('COMMIT');
     });
   });
 });

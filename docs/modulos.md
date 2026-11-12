@@ -215,7 +215,7 @@ Generación consolidada, sincronización y liquidación de listas de reposición
 |--------|------|-------------|
 | GET | `/shopping/lists` | Listar histórico de listas de compras del usuario |
 | GET | `/shopping/lists/:id` | Obtener lista detallada con sus ítems |
-| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados; responde array vacío si no hay faltantes) |
+| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados). Sin faltantes responde array vacío, salvo que la activa conserve ítems comprados: en ese caso la devuelve |
 | PATCH | `/shopping/lists/:id/items/:productId` | Marcar o desmarcar un ítem como comprado (`purchased`) |
 | POST | `/shopping/lists/:id/purchase` | Confirmar compra de ítems marcados, sumar a stock y cerrar lista dentro de transacción |
 
@@ -316,7 +316,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | LC-03 | Una lista activa y depuración de ítems | Existe como máximo una lista abierta (`is_purchased = false`). La sincronización preserva los ítems marcados como comprados, actualiza faltantes y **elimina automáticamente los ítems no comprados cuyos productos ya no estén bajo el mínimo** (recompuestos por compra externa o ajuste) |
 | LC-04 | Confirmación única | Intentar confirmar una lista que ya posee `is_purchased = true` es rechazado dentro de la transacción con código HTTP 409 (Conflict) |
 | LC-05 | Ítems obligatorios al confirmar | Intentar confirmar una lista sin ningún ítem marcado como comprado (`purchased = true`) responde HTTP 400 (Bad Request) dentro de la transacción |
-| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa (o la elimina si queda vacía) y responde HTTP 200 con array vacío |
+| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa y responde HTTP 200. Si la lista activa queda vacía se elimina y la respuesta es un array vacío; si conserva ítems marcados como comprados, se devuelve la lista para que pueda confirmarse |
 
 ### 5.4 Recetas y consumo
 
