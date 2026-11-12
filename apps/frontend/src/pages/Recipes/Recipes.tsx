@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
 import {
   AlertCircle,
-  Bookmark,
   CheckCircle2,
   ChefHat,
   Eye,
@@ -19,7 +18,7 @@ import { RecipeDetail } from '@/pages/Recipes/RecipeDetail';
 import { RecipeForm, type RecipeFormValues } from '@/pages/Recipes/RecipeForm';
 import { useProductsStore } from '@/stores/useProductsStore';
 import { useRecipesStore } from '@/stores/useRecipesStore';
-import type { MissingIngredient, RecipeSummary } from '@/types';
+import type { MissingIngredient, RecipeIngredient, RecipeListItem } from '@/types';
 
 type ActiveModal =
   | { kind: 'create' }
@@ -48,7 +47,6 @@ export const Recipes: FC = () => {
 
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'ready'>('all');
-  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [modal, setModal] = useState<ActiveModal>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -64,17 +62,17 @@ export const Recipes: FC = () => {
     void fetchProducts();
   }, [fetchRecipes, fetchAvailable, fetchProducts]);
 
-  const availableIds = useMemo(() => new Set(available.map((r) => r.id)), [available]);
-  const availableMeta = useMemo(() => {
-    const map = new Map(available.map((r) => [r.id, r]));
-    return map;
-  }, [available]);
+  /** Solo para `times_available` (cuántas veces se puede cocinar). */
+  const timesById = useMemo(
+    () => new Map(available.map((r) => [r.id, r.times_available])),
+    [available],
+  );
 
-  const readyCount = available.length;
+  const readyCount = recipes.filter((r) => r.can_cook).length;
 
   const filteredRecipes = recipes.filter((recipe) => {
     const matchesSearch = recipe.name.toLowerCase().includes(search.trim().toLowerCase());
-    const matchesReady = filterMode === 'all' || availableIds.has(recipe.id);
+    const matchesReady = filterMode === 'all' || recipe.can_cook;
     return matchesSearch && matchesReady;
   });
 
@@ -84,10 +82,6 @@ export const Recipes: FC = () => {
   const showToast = (message: string) => {
     setToast(message);
     setTimeout(() => setToast(null), 3500);
-  };
-
-  const toggleSave = (id: string) => {
-    setSavedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
   const openDetail = async (recipeId: string, nextKind: 'detail' | 'cook' | 'edit' = 'detail') => {
@@ -128,7 +122,7 @@ export const Recipes: FC = () => {
     showToast('Cambios guardados.');
   };
 
-  const handleDelete = async (recipe: RecipeSummary) => {
+  const handleDelete = async (recipe: RecipeListItem) => {
     try {
       await remove(recipe.id);
       setModal(null);
@@ -146,7 +140,7 @@ export const Recipes: FC = () => {
       const result = await cook(recipeId);
       setModal(null);
       showToast(`¡Listo! "${result.recipe_name}" cocinada y stock actualizado.`);
-      await fetchRecipes();
+      await Promise.all([fetchRecipes(), fetchAvailable()]);
     } catch (err) {
       if (err instanceof ApiError && err.statusCode === 400) {
         setCookError(err.message || 'Stock insuficiente. No se descontó nada.');
@@ -159,15 +153,14 @@ export const Recipes: FC = () => {
     }
   };
 
-  const cardAvailability = (recipe: RecipeSummary) => {
-    const ready = availableIds.has(recipe.id);
-    const meta = availableMeta.get(recipe.id);
-    const totalCount = recipe.ingredient_count;
-    // En cards solo ready/missing vía available set (brecha RC-UI-03: sin stock por ingrediente).
-    if (ready) {
-      return { ready: true, availableCount: totalCount, missingCount: 0, times: meta?.times_available };
-    }
-    return { ready: false, availableCount: 0, missingCount: totalCount, times: undefined };
+  const cardAvailability = (recipe: RecipeListItem) => {
+    const availableCount = recipe.ingredients.filter((i) => i.available).length;
+    return {
+      ready: recipe.can_cook,
+      availableCount,
+      missingCount: recipe.ingredients.length - availableCount,
+      times: recipe.can_cook ? timesById.get(recipe.id) : undefined,
+    };
   };
 
   return (
@@ -295,7 +288,6 @@ export const Recipes: FC = () => {
             {filteredRecipes.map((recipe) => {
               const { ready, availableCount, missingCount, times } = cardAvailability(recipe);
               const totalCount = recipe.ingredient_count;
-              const isSaved = savedIds.includes(recipe.id);
               const isMenuOpen = openMenuId === recipe.id;
 
               return (
@@ -321,19 +313,6 @@ export const Recipes: FC = () => {
                         </h3>
 
                         <div className="flex shrink-0 items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => toggleSave(recipe.id)}
-                            aria-pressed={isSaved}
-                            className="cursor-pointer rounded-lg border border-nido-border p-1.5 text-nido-muted transition-colors hover:bg-nido-bg hover:text-nido-ink"
-                            aria-label="Guardar receta"
-                            title="Marcador local (no se sincroniza)"
-                          >
-                            <Bookmark
-                              className={`h-3.5 w-3.5 ${isSaved ? 'fill-nido-olive text-nido-olive' : ''}`}
-                            />
-                          </button>
-
                           <div className="relative">
                             <button
                               type="button"
@@ -397,6 +376,8 @@ export const Recipes: FC = () => {
                     </div>
 
                     <div className="space-y-3">
+                      <IngredientStockList ingredients={recipe.ingredients} />
+
                       {ready ? (
                         <div className="flex items-center justify-between rounded-xl bg-nido-sage-bg px-3 py-2 text-xs font-medium text-nido-sage-text">
                           <span className="inline-flex items-center gap-1.5">
@@ -489,5 +470,41 @@ export const Recipes: FC = () => {
         />
       )}
     </div>
+  );
+};
+
+const MAX_VISIBLE_INGREDIENTS = 4;
+
+const formatQuantity = (value: number): string =>
+  value.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+
+/** Indicador de stock actual vs. requerido por ingrediente (wireframe §2.5). Los faltantes van primero. */
+const IngredientStockList: FC<{ ingredients: RecipeIngredient[] }> = ({ ingredients }) => {
+  const sorted = [...ingredients].sort((a, b) => Number(a.available) - Number(b.available));
+  const visible = sorted.slice(0, MAX_VISIBLE_INGREDIENTS);
+  const hidden = sorted.length - visible.length;
+
+  return (
+    <ul className="space-y-1.5" aria-label="Stock de ingredientes">
+      {visible.map((ingredient) => (
+        <li key={ingredient.product_id} className="flex items-center justify-between gap-3 text-[11px]">
+          <span className="truncate text-nido-secondary">{ingredient.product_name}</span>
+          <span
+            className={`shrink-0 font-semibold ${
+              ingredient.available ? 'text-nido-sage-text' : 'text-nido-terracotta-text'
+            }`}
+            title={ingredient.available ? 'Stock suficiente' : 'Stock insuficiente'}
+          >
+            {formatQuantity(ingredient.current_stock)} / {formatQuantity(ingredient.quantity)}{' '}
+            {ingredient.unit}
+          </span>
+        </li>
+      ))}
+      {hidden > 0 && (
+        <li className="text-[11px] text-nido-subtle">
+          +{hidden} {hidden === 1 ? 'ingrediente más' : 'ingredientes más'}
+        </li>
+      )}
+    </ul>
   );
 };

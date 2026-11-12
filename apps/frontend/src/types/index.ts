@@ -112,6 +112,12 @@ export interface RecipeIngredient {
   available: boolean;
 }
 
+/** Receta del listado con sus ingredientes y disponibilidad (RC-04, RC-UI-03). */
+export interface RecipeListItem extends RecipeSummary {
+  ingredients: RecipeIngredient[];
+  can_cook: boolean;
+}
+
 export interface RecipeDetail {
   id: string;
   name: string;
