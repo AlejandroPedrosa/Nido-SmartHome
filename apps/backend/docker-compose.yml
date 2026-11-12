@@ -1,0 +1,32 @@
+# ============================================================
+# NIDO SmartHome — Ejecución del backend con Docker Compose
+# Pensado para la instancia EC2 (y para probar la imagen en local).
+#
+#   docker compose up -d --build     # construir y levantar
+#   docker compose logs -f api       # ver logs
+#   docker compose down              # detener
+# ============================================================
+services:
+  api:
+    build: .
+    image: nido-backend:latest
+    container_name: nido-api
+    # Variables de entorno desde apps/backend/.env (no se versiona).
+    env_file: .env
+    # Tienen prioridad sobre el .env: el contenedor siempre escucha en 3000.
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    # Solo escucha en localhost: el acceso público entra por Nginx (HTTPS).
+    # Para probar en local sin Nginx, la API queda en http://localhost:3000.
+    ports:
+      - '127.0.0.1:3000:3000'
+    # Se reinicia sola si se cae o si se reinicia la instancia.
+    restart: unless-stopped
+    # Proceso init liviano: reenvía señales y evita procesos zombie.
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

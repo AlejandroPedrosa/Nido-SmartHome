@@ -1,0 +1,28 @@
+# Lo que NO entra al contexto de build de Docker.
+
+# Dependencias y artefactos: se generan dentro de la imagen
+node_modules
+dist
+coverage
+
+# Credenciales: las variables se inyectan al ejecutar el contenedor
+.env
+.env.*
+
+# Archivos que la imagen no necesita
+*.md
+**/*.spec.ts
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+.editorconfig
+.prettierrc
+.prettierignore
+eslint.config.mjs
+.nvmrc
+.vscode
+.idea
+.DS_Store
+npm-debug.log*
