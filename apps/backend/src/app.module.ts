@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory';
 import { ProductsModule } from './products';
 import { RecipesModule } from './recipes';
+import { ShoppingModule } from './shopping';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { RecipesModule } from './recipes';
     ProductsModule,
     ContainersModule,
     RecipesModule,
+    ShoppingModule,
   ],
   controllers: [],
   providers: [{ provide: APP_FILTER, useClass: PgExceptionFilter }],
