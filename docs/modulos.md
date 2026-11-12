@@ -143,7 +143,7 @@ Espacios físicos del hogar y asignación de inventario.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/containers` | Listar contenedores del usuario |
+| GET | `/containers` | Listar contenedores del usuario, con `product_count` y `low_stock_count` (productos asignados bajo mínimo, RS-01) |
 | GET | `/containers/:id` | Contenedor con sus productos asociados |
 | POST | `/containers` | Crear contenedor (valida nombre único insensible a mayúsculas por usuario) |
 | PATCH | `/containers/:id` | Actualizar contenedor |
