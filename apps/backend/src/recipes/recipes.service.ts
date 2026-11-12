@@ -4,6 +4,7 @@ import { PG_POOL, withTransaction } from '../database';
 import { RecipeIngredientDto } from './dto/recipe-ingredient.dto';
 import { CreateRecipeDto, UpdateRecipeDto } from './dto/recipe.dto';
 import {
+  AvailableRecipe,
   RECIPE_SUMMARY_COLUMNS,
   RecipeDetail,
   RecipeIngredient,
@@ -35,6 +36,28 @@ export class RecipesService {
       `SELECT ${RECIPE_SUMMARY_COLUMNS}
          FROM recipes r
         WHERE r.user_id = $1
+        ORDER BY LOWER(r.name)`,
+      [userId],
+    );
+    return rows;
+  }
+
+  /**
+   * RF-10 / RC-04: recetas que se pueden cocinar ya, porque el stock cubre
+   * la cantidad de todos sus ingredientes. Se resuelve en una sola consulta:
+   * `bool_and` exige que ningún ingrediente falte. Incluye cuántas veces se
+   * podría preparar (el ingrediente más escaso define el límite).
+   */
+  async findAvailable(userId: string): Promise<AvailableRecipe[]> {
+    const { rows } = await this.pool.query<AvailableRecipe>(
+      `SELECT ${RECIPE_SUMMARY_COLUMNS},
+              FLOOR(MIN(p.current_stock / ri.quantity))::int AS times_available
+         FROM recipes r
+         JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+         JOIN products p ON p.id = ri.product_id AND p.user_id = r.user_id
+        WHERE r.user_id = $1
+        GROUP BY r.id
+       HAVING bool_and(p.current_stock >= ri.quantity)
         ORDER BY LOWER(r.name)`,
       [userId],
     );

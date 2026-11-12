@@ -9,6 +9,12 @@ export interface RecipeSummary {
   ingredient_count: number;
 }
 
+/** Receta cocinable con el stock actual (RC-04). */
+export interface AvailableRecipe extends RecipeSummary {
+  /** Cuántas veces se puede preparar con el stock actual (mínimo 1). */
+  times_available: number;
+}
+
 /** Ingrediente con los datos actuales del producto que consume. */
 export interface RecipeIngredient {
   product_id: string;

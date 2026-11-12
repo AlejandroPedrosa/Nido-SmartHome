@@ -13,6 +13,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { uuidParam } from '../common/pipes/uuid-param.pipe';
 import { CreateRecipeDto, UpdateRecipeDto } from './dto/recipe.dto';
 import type {
+  AvailableRecipe,
   RecipeDetail,
   RecipeSummary,
 } from './interfaces/recipe.interface';
@@ -25,6 +26,15 @@ export class RecipesController {
   @Get()
   findAll(@CurrentUser('id') userId: string): Promise<RecipeSummary[]> {
     return this.recipesService.findAll(userId);
+  }
+
+  /**
+   * RF-10: recetas cocinables con el stock actual.
+   * Declarada antes de `:id` para que "available" no se tome como id.
+   */
+  @Get('available')
+  findAvailable(@CurrentUser('id') userId: string): Promise<AvailableRecipe[]> {
+    return this.recipesService.findAvailable(userId);
   }
 
   @Get(':id')
