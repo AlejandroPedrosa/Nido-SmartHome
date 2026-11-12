@@ -1,75 +1,62 @@
-# React + TypeScript + Vite
+# NIDO SmartHome — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite + Tailwind + Zustand + axios.
 
-Currently, two official plugins are available:
+## Requisitos
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js 24+
+- pnpm 10+
 
-## React Compiler
+## Variables de entorno
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Copiá [`.env.example`](.env.example) a `.env`:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+cp .env.example .env
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+| Variable | Descripción | Local | Producción |
+|----------|-------------|-------|------------|
+| `VITE_API_URL` | URL base del backend NestJS (sin barra final) | `http://localhost:3000` | `https://api.<tu-dominio>` |
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+El backend debe permitir ese origen en `CORS_ORIGIN`.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Desarrollo
 
+```bash
+pnpm install
+pnpm dev
 ```
+
+La app queda en `http://localhost:5173`. El backend local se levanta desde `apps/backend` (`npm run start:dev`).
+
+## Scripts
+
+| Comando | Descripción |
+|---------|-------------|
+| `pnpm dev` | Servidor de desarrollo Vite |
+| `pnpm build` | Typecheck (`tsc -b`) + build de producción |
+| `pnpm lint` | ESLint |
+| `pnpm preview` | Sirve el build local |
+
+## Arquitectura breve
+
+```text
+src/
+  lib/api.ts          # axios + interceptores (Bearer, refresh 401)
+  lib/auth-session.ts # tokens en localStorage
+  services/           # un cliente por módulo del backend
+  stores/             # Zustand
+  pages/              # pantallas
+  components/         # layout, auth, UI
+```
+
+## Despliegue en Vercel
+
+1. Crear un proyecto en Vercel con **Root Directory** = `apps/frontend`.
+2. Framework preset: Vite.
+3. Variable de entorno `VITE_API_URL` = URL HTTPS del backend (`https://api.<dominio>`).
+4. El archivo [`vercel.json`](vercel.json) reescribe las rutas SPA a `/index.html` para React Router.
+5. Tras el deploy, actualizar `CORS_ORIGIN` del backend con la URL de Vercel y reiniciar el contenedor en EC2.
+
+Checklist de humo post-deploy: registro, login, CRUD de productos/contenedores/recetas, cocinar, generar lista, confirmar compra, refresh de token y logout.

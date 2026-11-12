@@ -1,0 +1,62 @@
+# ============================================================
+# NIDO SmartHome — CI del frontend (React + Vite)
+# Lint y build en cada PR y push a develop / main que toque
+# el frontend.
+# ============================================================
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/frontend/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+        env:
+          VITE_API_URL: http://localhost:3000
