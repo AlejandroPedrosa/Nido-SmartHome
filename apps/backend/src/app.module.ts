@@ -4,6 +4,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from './auth';
 import { PgExceptionFilter } from './common/filters/pg-exception.filter';
 import { validateEnv } from './config';
+import { ContainersModule } from './containers';
 import { DatabaseModule } from './database';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory';
@@ -21,6 +22,7 @@ import { ProductsModule } from './products';
     AuthModule,
     InventoryModule,
     ProductsModule,
+    ContainersModule,
   ],
   controllers: [],
   providers: [{ provide: APP_FILTER, useClass: PgExceptionFilter }],
