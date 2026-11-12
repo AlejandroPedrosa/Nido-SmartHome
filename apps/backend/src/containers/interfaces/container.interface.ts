@@ -1,9 +1,16 @@
+import type { Product } from '../../products/interfaces/product.interface';
+
 /** Contenedor con la cantidad de productos asignados (tarjetas de ContainerList). */
 export interface Container {
   id: string;
   name: string;
   created_at: Date;
   product_count: number;
+}
+
+/** Detalle de un contenedor con sus productos asignados (ContainerDetail). */
+export interface ContainerDetail extends Container {
+  products: Product[];
 }
 
 /**
