@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { getSuggestedQuantity } from '../common/utils/suggested-quantity';
 import { PG_POOL, withTransaction } from '../database';
@@ -117,6 +122,33 @@ export class ShoppingService {
     });
   }
 
+  /**
+   * RF-13: marca o desmarca un ítem como comprado. La lista se bloquea para
+   * no cruzarse con una confirmación de compra simultánea. 409 si la lista
+   * ya fue confirmada; 404 si es ajena o el producto no está en ella.
+   */
+  async setItemPurchased(
+    userId: string,
+    listId: string,
+    productId: string,
+    purchased: boolean,
+  ): Promise<ShoppingListDetail> {
+    return withTransaction(this.pool, async (client) => {
+      await this.lockOpenList(client, userId, listId);
+
+      const { rowCount } = await client.query(
+        `UPDATE shopping_list_items SET purchased = $3
+          WHERE shopping_list_id = $1 AND product_id = $2`,
+        [listId, productId, purchased],
+      );
+      if (rowCount === 0) {
+        throw new NotFoundException('El producto no está en la lista');
+      }
+
+      return this.loadList(client, userId, listId);
+    });
+  }
+
   /** Lista con sus ítems. 404 si no existe o es ajena (MT-03). */
   async findOne(userId: string, listId: string): Promise<ShoppingListDetail> {
     return this.loadList(this.pool, userId, listId);
@@ -152,6 +184,29 @@ export class ShoppingService {
     );
 
     return { ...list.rows[0], items: items.rows };
+  }
+
+  /**
+   * Bloquea una lista del usuario (FOR UPDATE) y exige que siga abierta.
+   * 404 si no existe o es ajena; 409 si ya fue confirmada (LC-04).
+   */
+  protected async lockOpenList(
+    client: PoolClient,
+    userId: string,
+    listId: string,
+  ): Promise<void> {
+    const { rows } = await client.query<{ is_purchased: boolean }>(
+      `SELECT is_purchased FROM shopping_lists
+        WHERE id = $1 AND user_id = $2
+          FOR UPDATE`,
+      [listId, userId],
+    );
+    if (rows.length === 0) {
+      throw new NotFoundException('Lista de compras no encontrada');
+    }
+    if (rows[0].is_purchased) {
+      throw new ConflictException('La lista de compras ya fue confirmada');
+    }
   }
 
   /** Id de la lista activa del usuario, bloqueada hasta el fin de la transacción. */

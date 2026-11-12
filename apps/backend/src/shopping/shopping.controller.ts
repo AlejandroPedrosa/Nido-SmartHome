@@ -1,13 +1,16 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { uuidParam } from '../common/pipes/uuid-param.pipe';
+import { SetItemPurchasedDto } from './dto/set-item-purchased.dto';
 import type {
   ShoppingListDetail,
   ShoppingListSummary,
@@ -44,5 +47,21 @@ export class ShoppingController {
     @Param('id', uuidParam('id')) id: string,
   ): Promise<ShoppingListDetail> {
     return this.shoppingService.findOne(userId, id);
+  }
+
+  /** RF-13: marca o desmarca un ítem. 409 si la lista ya fue confirmada. */
+  @Patch(':id/items/:productId')
+  setItemPurchased(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+    @Param('productId', uuidParam('productId')) productId: string,
+    @Body() dto: SetItemPurchasedDto,
+  ): Promise<ShoppingListDetail> {
+    return this.shoppingService.setItemPurchased(
+      userId,
+      id,
+      productId,
+      dto.purchased,
+    );
   }
 }
