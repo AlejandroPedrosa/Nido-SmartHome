@@ -7,6 +7,7 @@ const container = {
   name: 'Alacena',
   created_at: new Date('2026-11-11T12:00:00Z'),
   product_count: 3,
+  low_stock_count: 1,
 };
 
 describe('ContainersService (CRUD)', () => {
@@ -20,18 +21,21 @@ describe('ContainersService (CRUD)', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('findAll lista los contenedores del usuario con su conteo de productos', async () => {
+  it('findAll lista los contenedores del usuario con sus conteos de productos y faltantes', async () => {
     pool.query.mockResolvedValue({ rows: [container], rowCount: 1 });
 
     await expect(service.findAll('user-1')).resolves.toEqual([container]);
     expect(call().sql).toContain('AS product_count');
+    expect(call().sql).toContain(
+      'p.current_stock < p.min_stock) AS low_stock_count',
+    );
     expect(call().sql).toContain('WHERE c.user_id = $1 ORDER BY LOWER(c.name)');
     expect(call().params).toEqual(['user-1']);
   });
 
   it('create inserta con el user_id del token', async () => {
     pool.query.mockResolvedValue({
-      rows: [{ ...container, product_count: 0 }],
+      rows: [{ ...container, product_count: 0, low_stock_count: 0 }],
       rowCount: 1,
     });
 

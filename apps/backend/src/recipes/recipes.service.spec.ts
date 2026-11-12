@@ -87,6 +87,40 @@ describe('RecipesService (CRUD)', () => {
     );
   });
 
+  describe('findAll', () => {
+    it('incluye ingredientes y can_cook de cada receta en una sola consulta (RC-04)', async () => {
+      const listRow = {
+        id: 'rec-1',
+        name: 'Pasta con salsa',
+        servings: 2,
+        created_at: recipeRow.created_at,
+        ingredient_count: 2,
+        ingredients: ingredientRows,
+        can_cook: false,
+      };
+      pool.query.mockReset().mockResolvedValueOnce({
+        rows: [listRow],
+        rowCount: 1,
+      });
+
+      const result = await service.findAll('user-1');
+
+      expect(result).toEqual([listRow]);
+      expect(pool.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = pool.query.mock.calls[0] as [string, unknown[]];
+      const flat = sql.replace(/\s+/g, ' ');
+      expect(params).toEqual(['user-1']);
+      expect(flat).toContain('LEFT JOIN LATERAL');
+      expect(flat).toContain(
+        "COALESCE(ing.ingredients, '[]'::json) AS ingredients",
+      );
+      expect(flat).toContain('COALESCE(ing.can_cook, TRUE) AS can_cook');
+      expect(flat).toContain('bool_and(p.current_stock >= ri.quantity)');
+      expect(flat).toContain('p.user_id = r.user_id');
+      expect(flat).toContain('WHERE r.user_id = $1 ORDER BY LOWER(r.name)');
+    });
+  });
+
   describe('findOne', () => {
     it('devuelve ingredientes con disponibilidad y can_cook (RC-04)', async () => {
       const result = await service.findOne('user-1', 'rec-1');

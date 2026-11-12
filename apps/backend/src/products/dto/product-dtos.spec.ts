@@ -77,8 +77,52 @@ describe('CreateProductDto', () => {
       'current_stock es demasiado grande',
     ],
     [{ name: 'X', user_id: 'otro' }, 'property user_id should not exist'],
+    [{ name: 'X', container_ids: null }, 'container_ids debe ser una lista'],
+    [
+      { name: 'X', container_ids: '0b4c3f8e-6a2d-4f1e-9c7b-1a2b3c4d5e6f' },
+      'container_ids debe ser una lista',
+    ],
+    [
+      { name: 'X', container_ids: ['no-es-uuid'] },
+      'Cada container_id debe ser un UUID válido',
+    ],
+    [
+      {
+        name: 'X',
+        container_ids: [
+          '0b4c3f8e-6a2d-4f1e-9c7b-1a2b3c4d5e6f',
+          '0b4c3f8e-6a2d-4f1e-9c7b-1a2b3c4d5e6f',
+        ],
+      },
+      'container_ids no puede tener repetidos',
+    ],
+    [
+      {
+        name: 'X',
+        container_ids: Array.from(
+          { length: 51 },
+          () => '0b4c3f8e-6a2d-4f1e-9c7b-1a2b3c4d5e6f',
+        ),
+      },
+      'container_ids no puede tener más de 50 contenedores',
+    ],
   ])('rechaza %j', (payload, message) => {
     expect(check(CreateProductDto, payload).messages).toEqual([message]);
+  });
+
+  it('acepta container_ids como lista de UUIDs (vacía o no)', () => {
+    expect(
+      check(CreateProductDto, {
+        name: 'X',
+        container_ids: [
+          '0b4c3f8e-6a2d-4f1e-9c7b-1a2b3c4d5e6f',
+          '7d9e2a1b-3c4f-4a5b-8c6d-9e0f1a2b3c4d',
+        ],
+      }).messages,
+    ).toEqual([]);
+    expect(
+      check(CreateProductDto, { name: 'X', container_ids: [] }).messages,
+    ).toEqual([]);
   });
 });
 
@@ -108,8 +152,17 @@ describe('UpdateProductDto', () => {
     ],
     [{ min_stock: null }, 'min_stock debe ser un número con hasta 2 decimales'],
     [{ current_stock: 10 }, 'property current_stock should not exist'],
+    [{ container_ids: null }, 'container_ids debe ser una lista'],
+    [
+      { container_ids: ['no-es-uuid'] },
+      'Cada container_id debe ser un UUID válido',
+    ],
   ])('rechaza %j', (payload, message) => {
     expect(check(UpdateProductDto, payload).messages).toEqual([message]);
+  });
+
+  it('acepta container_ids vacío para desvincular todos', () => {
+    expect(check(UpdateProductDto, { container_ids: [] }).messages).toEqual([]);
   });
 });
 

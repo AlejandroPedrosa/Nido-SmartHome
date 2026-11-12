@@ -27,6 +27,16 @@ export interface RecipeIngredient {
   available: boolean;
 }
 
+/**
+ * Receta del listado con sus ingredientes y disponibilidad (RC-04), para el
+ * indicador de stock actual vs. requerido de cada tarjeta.
+ */
+export interface RecipeListItem extends RecipeSummary {
+  ingredients: RecipeIngredient[];
+  /** RC-04: todos los ingredientes tienen stock suficiente. */
+  can_cook: boolean;
+}
+
 /** Detalle de una receta (RecipeDetail). */
 export interface RecipeDetail {
   id: string;

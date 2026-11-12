@@ -57,6 +57,27 @@ describe('ProductsService (consultas)', () => {
       expect(call().params).toEqual(['user-1']);
     });
 
+    it('incluye los contenedores de cada producto en la misma consulta (PR-01)', async () => {
+      pool.query.mockResolvedValue({
+        rows: [
+          { ...row(), containers: [{ id: 'cont-1', name: 'Alacena' }] },
+          { ...row({ id: 'prod-2' }), containers: [] },
+        ],
+        rowCount: 2,
+      });
+
+      const result = await service.findAll('user-1', {});
+
+      expect(result.map((p) => p.containers)).toEqual([
+        [{ id: 'cont-1', name: 'Alacena' }],
+        [],
+      ]);
+      expect(pool.query).toHaveBeenCalledTimes(1);
+      expect(call().sql).toContain('json_agg(json_build_object(');
+      expect(call().sql).toContain("'[]'::json) AS containers");
+      expect(call().sql).toContain('c.user_id = p.user_id');
+    });
+
     it('combina todos los filtros como parámetros', async () => {
       await service.findAll('user-1', {
         name: 'fide',
@@ -113,12 +134,10 @@ describe('ProductsService (consultas)', () => {
 
   describe('findOne', () => {
     it('devuelve el detalle con sus contenedores', async () => {
-      pool.query
-        .mockResolvedValueOnce({ rows: [row()], rowCount: 1 })
-        .mockResolvedValueOnce({
-          rows: [{ id: 'cont-1', name: 'Alacena' }],
-          rowCount: 1,
-        });
+      pool.query.mockResolvedValueOnce({
+        rows: [{ ...row(), containers: [{ id: 'cont-1', name: 'Alacena' }] }],
+        rowCount: 1,
+      });
 
       const result = await service.findOne('user-1', 'prod-1');
 
@@ -127,8 +146,10 @@ describe('ProductsService (consultas)', () => {
         stock_status: StockStatus.Ok,
         containers: [{ id: 'cont-1', name: 'Alacena' }],
       });
+      expect(pool.query).toHaveBeenCalledTimes(1);
       expect(call(0).params).toEqual(['prod-1', 'user-1']);
-      expect(call(1).sql).toContain('c.user_id = $2');
+      expect(call(0).sql).toContain('AS containers');
+      expect(call(0).sql).toContain('c.user_id = p.user_id');
     });
 
     it('responde 404 si el producto no existe o es ajeno (MT-03)', async () => {

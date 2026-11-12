@@ -34,9 +34,26 @@ export interface ProductDetail extends Product {
   containers: ProductContainer[];
 }
 
+/** Fila de `products` con sus contenedores (columna `PRODUCT_CONTAINERS_JSON`). */
+export interface ProductDetailRow extends ProductRow {
+  containers: ProductContainer[];
+}
+
 /** Columnas de `products` que se seleccionan en todas las consultas. */
 export const PRODUCT_COLUMNS = `p.id, p.name, p.category, p.unit, p.current_stock,
   p.min_stock, p.reorder_quantity, p.created_at`;
+
+/**
+ * Contenedores de un producto `p` como array JSON `[{id, name}]`, ordenados
+ * por nombre, en la misma consulta (sin N+1). Solo los del dueño del producto.
+ */
+export const PRODUCT_CONTAINERS_JSON = `COALESCE((
+    SELECT json_agg(json_build_object('id', c.id, 'name', c.name)
+                    ORDER BY LOWER(c.name))
+      FROM product_containers pc
+      JOIN containers c ON c.id = pc.container_id
+     WHERE pc.product_id = p.id AND c.user_id = p.user_id
+  ), '[]'::json) AS containers`;
 
 export function toProduct(row: ProductRow): Product {
   return {
@@ -54,4 +71,8 @@ export function toLowStockProduct(row: ProductRow): LowStockProduct {
       reorderQuantity: row.reorder_quantity,
     }),
   };
+}
+
+export function toProductDetail(row: ProductDetailRow): ProductDetail {
+  return { ...toProduct(row), containers: row.containers };
 }
