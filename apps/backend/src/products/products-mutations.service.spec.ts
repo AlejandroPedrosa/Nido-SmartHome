@@ -37,9 +37,10 @@ describe('ProductsService (update / remove)', () => {
 
   describe('update', () => {
     const mockFindOne = () =>
-      pool.query
-        .mockResolvedValueOnce({ rows: [productRow], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      pool.query.mockResolvedValueOnce({
+        rows: [{ ...productRow, containers: [] }],
+        rowCount: 1,
+      });
 
     it('actualiza solo los campos enviados y devuelve el detalle', async () => {
       pool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
@@ -80,7 +81,7 @@ describe('ProductsService (update / remove)', () => {
       await service.update('user-1', 'prod-1', {});
 
       expect(sqlOf(0)).toContain('SELECT');
-      expect(pool.query).toHaveBeenCalledTimes(2);
+      expect(pool.query).toHaveBeenCalledTimes(1);
     });
 
     it('responde 404 si el producto no es del usuario', async () => {

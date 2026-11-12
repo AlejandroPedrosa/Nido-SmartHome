@@ -26,12 +26,15 @@ import { ProductsService } from './products.service';
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  /** RF-07: listado con filtros opcionales (name, category, low_stock, container_id). */
+  /**
+   * RF-07: listado con filtros opcionales (name, category, low_stock,
+   * container_id). Cada producto incluye `containers: [{id, name}]` (PR-01).
+   */
   @Get()
   findAll(
     @CurrentUser('id') userId: string,
     @Query() query: ProductQueryDto,
-  ): Promise<Product[]> {
+  ): Promise<ProductDetail[]> {
     return this.productsService.findAll(userId, query);
   }
 
