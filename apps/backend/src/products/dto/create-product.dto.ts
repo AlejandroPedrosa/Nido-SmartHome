@@ -8,6 +8,7 @@ import {
 import { DEFAULT_UNIT, Unit } from '../../common/enums/unit.enum';
 import { IsQuantity } from '../../common/validators/quantity.decorators';
 import { Trim, TrimToNull } from '../../common/validators/transforms';
+import { IsContainerIds } from './container-ids.decorator';
 
 export const UNIT_MESSAGE = `unit debe ser una de: ${Object.values(Unit).join(', ')}`;
 
@@ -45,4 +46,8 @@ export class CreateProductDto {
   @IsQuantity('reorder_quantity', { min: 'positive' })
   @IsOptional()
   reorder_quantity?: number | null;
+
+  /** CT-01: contenedores asignados, aplicados en la misma transacción. */
+  @IsContainerIds()
+  container_ids?: string[];
 }

@@ -123,8 +123,8 @@ CRUD de productos y consulta de existencias.
 | GET | `/products` | Listar productos del usuario (filtros opcionales: `category`, `name`, `low_stock`, `container_id`). Cada producto incluye sus contenedores asignados (`containers: [{id, name}]`) |
 | GET | `/products/low-stock` | Productos con `current_stock < min_stock` |
 | GET | `/products/:id` | Producto por ID (solo si pertenece al usuario), con sus contenedores asignados |
-| POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional) |
-| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock) |
+| POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional). Acepta `container_ids` opcional: asigna los contenedores en la misma transacción (404 si alguno es ajeno) y responde con `containers` |
+| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno) |
 | DELETE | `/products/:id` | Eliminar producto (responde 409 si es insumo de receta existente; si no, purga producto e historial) |
 
 ---

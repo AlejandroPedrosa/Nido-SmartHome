@@ -17,7 +17,6 @@ import { ProductQueryDto } from './dto/product-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import type {
   LowStockProduct,
-  Product,
   ProductDetail,
 } from './interfaces/product.interface';
 import { ProductsService } from './products.service';
@@ -49,14 +48,15 @@ export class ProductsController {
 
   /**
    * RF-03: crea un producto. Si current_stock > 0 registra el movimiento
-   * inicial en la misma transacción. 409 si el nombre ya existe (UG-01).
+   * inicial en la misma transacción. Con `container_ids` asigna los
+   * contenedores en esa misma transacción. 409 si el nombre ya existe (UG-01).
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateProductDto,
-  ): Promise<Product> {
+  ): Promise<ProductDetail> {
     return this.productsService.create(userId, dto);
   }
 
@@ -68,7 +68,10 @@ export class ProductsController {
     return this.productsService.findOne(userId, id);
   }
 
-  /** RF-03: actualiza metadatos (no el stock). 409 si el nombre ya existe. */
+  /**
+   * RF-03: actualiza metadatos (no el stock) y, si llega `container_ids`,
+   * reemplaza los contenedores en la misma transacción. 409 si el nombre ya existe.
+   */
   @Patch(':id')
   update(
     @CurrentUser('id') userId: string,
