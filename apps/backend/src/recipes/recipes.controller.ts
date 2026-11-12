@@ -16,7 +16,7 @@ import type {
   AvailableRecipe,
   CookResult,
   RecipeDetail,
-  RecipeSummary,
+  RecipeListItem,
 } from './interfaces/recipe.interface';
 import { RecipesService } from './recipes.service';
 
@@ -24,8 +24,9 @@ import { RecipesService } from './recipes.service';
 export class RecipesController {
   constructor(private readonly recipesService: RecipesService) {}
 
+  /** Recetas con sus ingredientes (stock vs. requerido) y `can_cook`. */
   @Get()
-  findAll(@CurrentUser('id') userId: string): Promise<RecipeSummary[]> {
+  findAll(@CurrentUser('id') userId: string): Promise<RecipeListItem[]> {
     return this.recipesService.findAll(userId);
   }
 

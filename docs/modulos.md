@@ -168,7 +168,7 @@ Gestión de recetas culinarias, ingredientes vinculados al inventario y preparac
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/recipes` | Listar recetas del usuario |
+| GET | `/recipes` | Listar recetas del usuario, cada una con sus `ingredients` (`product_id`, `product_name`, `unit`, `quantity`, `current_stock`, `available`) y `can_cook` (RC-04), en una sola consulta |
 | GET | `/recipes/available` | Recetas cuyo stock cubre todos los ingredientes requeridos |
 | GET | `/recipes/:id` | Receta detallada con sus ingredientes |
 | POST | `/recipes` | Crear receta (exige al menos un ingrediente propio) |

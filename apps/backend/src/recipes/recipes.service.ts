@@ -19,7 +19,7 @@ import {
   RECIPE_SUMMARY_COLUMNS,
   RecipeDetail,
   RecipeIngredient,
-  RecipeSummary,
+  RecipeListItem,
 } from './interfaces/recipe.interface';
 
 interface LockedIngredient {
@@ -131,10 +131,32 @@ export class RecipesService {
     });
   }
 
-  async findAll(userId: string): Promise<RecipeSummary[]> {
-    const { rows } = await this.pool.query<RecipeSummary>(
-      `SELECT ${RECIPE_SUMMARY_COLUMNS}
+  /**
+   * Recetas del usuario con sus ingredientes (stock actual vs. requerido) y
+   * `can_cook` (RC-04), en una sola consulta: un `LATERAL` por receta arma el
+   * array JSON de ingredientes y `bool_and` resume la disponibilidad, sin
+   * consultas adicionales por receta (N+1).
+   */
+  async findAll(userId: string): Promise<RecipeListItem[]> {
+    const { rows } = await this.pool.query<RecipeListItem>(
+      `SELECT ${RECIPE_SUMMARY_COLUMNS},
+              COALESCE(ing.ingredients, '[]'::json) AS ingredients,
+              COALESCE(ing.can_cook, TRUE) AS can_cook
          FROM recipes r
+         LEFT JOIN LATERAL (
+           SELECT json_agg(json_build_object(
+                    'product_id', p.id,
+                    'product_name', p.name,
+                    'unit', p.unit,
+                    'quantity', ri.quantity,
+                    'current_stock', p.current_stock,
+                    'available', p.current_stock >= ri.quantity
+                  ) ORDER BY LOWER(p.name)) AS ingredients,
+                  bool_and(p.current_stock >= ri.quantity) AS can_cook
+             FROM recipe_ingredients ri
+             JOIN products p ON p.id = ri.product_id AND p.user_id = r.user_id
+            WHERE ri.recipe_id = r.id
+         ) ing ON TRUE
         WHERE r.user_id = $1
         ORDER BY LOWER(r.name)`,
       [userId],
