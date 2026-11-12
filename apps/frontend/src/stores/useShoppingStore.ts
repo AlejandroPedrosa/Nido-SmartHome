@@ -15,6 +15,8 @@ interface ShoppingState {
   loadActive: () => Promise<void>;
   generate: () => Promise<void>;
   setItemPurchased: (productId: string, purchased: boolean) => Promise<void>;
+  /** LC-07: quita el ítem de la lista activa; si queda vacía, deja de haber lista. */
+  removeItem: (productId: string) => Promise<void>;
   purchase: () => Promise<void>;
   loadHistoryDetail: (id: string) => Promise<void>;
 }
@@ -82,11 +84,15 @@ export const useShoppingStore = create<ShoppingState>((set, get) => ({
         await get().fetchLists();
         return;
       }
+      // LC-06: sin faltantes nuevos la lista sobrevive si tiene ítems comprados.
+      const onlyPurchased = result.item_count > 0 && result.item_count === result.purchased_count;
       set({
         activeList: result,
         pendingCount: pendingFrom(result),
         isLoading: false,
-        notice: `Lista sincronizada con ${result.item_count} ${result.item_count === 1 ? 'faltante' : 'faltantes'}.`,
+        notice: onlyPurchased
+          ? `No hay faltantes nuevos. Tenés ${result.purchased_count} ${result.purchased_count === 1 ? 'ítem marcado' : 'ítems marcados'} para confirmar la compra.`
+          : `Lista sincronizada con ${result.item_count} ${result.item_count === 1 ? 'faltante' : 'faltantes'}.`,
       });
       await get().fetchLists();
     } catch (error) {
@@ -118,6 +124,33 @@ export const useShoppingStore = create<ShoppingState>((set, get) => ({
     } catch (error) {
       set({ activeList: current, pendingCount: pendingFrom(current) });
       throw error;
+    }
+  },
+
+  removeItem: async (productId) => {
+    const current = get().activeList;
+    if (!current) return;
+
+    const items = current.items.filter((item) => item.product_id !== productId);
+    const optimistic: ShoppingListDetail = {
+      ...current,
+      items,
+      item_count: items.length,
+      purchased_count: items.filter((item) => item.purchased).length,
+    };
+    set({ activeList: optimistic, pendingCount: pendingFrom(optimistic) });
+
+    try {
+      await shoppingService.removeItem(current.id, productId);
+    } catch (error) {
+      set({ activeList: current, pendingCount: pendingFrom(current) });
+      throw error;
+    }
+
+    // La API elimina la lista que queda vacía (LC-07).
+    if (items.length === 0) {
+      set({ activeList: null, pendingCount: 0 });
+      await get().fetchLists();
     }
   },
 

@@ -5,7 +5,6 @@ import {
   ChevronDown,
   History,
   PackageCheck,
-  Plus,
   RefreshCw,
   ShoppingBag,
   Sparkles,
@@ -13,11 +12,9 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useShoppingStore } from '@/stores/useShoppingStore';
-import type { ProductUnit, ShoppingListDetail } from '@/types';
+import type { ShoppingListDetail, ShoppingListItem } from '@/types';
 
 type Tab = 'active' | 'history';
-
-const PRODUCT_UNITS: ProductUnit[] = ['g', 'kg', 'ml', 'l', 'unidad', 'paquete', 'botella'];
 
 const formatDate = (iso: string): string =>
   new Date(iso).toLocaleDateString('es-AR', {
@@ -37,14 +34,14 @@ export const ShoppingList: FC = () => {
   const loadActive = useShoppingStore((s) => s.loadActive);
   const generate = useShoppingStore((s) => s.generate);
   const setItemPurchased = useShoppingStore((s) => s.setItemPurchased);
+  const removeItem = useShoppingStore((s) => s.removeItem);
   const purchase = useShoppingStore((s) => s.purchase);
   const loadHistoryDetail = useShoppingStore((s) => s.loadHistoryDetail);
   const fetchLists = useShoppingStore((s) => s.fetchLists);
 
   const [tab, setTab] = useState<Tab>('active');
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQty, setNewItemQty] = useState('1');
-  const [newItemUnit, setNewItemUnit] = useState<ProductUnit>('unidad');
+  const [itemToRemove, setItemToRemove] = useState<ShoppingListItem | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -67,6 +64,21 @@ export const ShoppingList: FC = () => {
       await setItemPurchased(productId, !purchased);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo actualizar el ítem.');
+    }
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!itemToRemove) return;
+    setIsRemoving(true);
+    setActionError(null);
+    try {
+      await removeItem(itemToRemove.product_id);
+      setItemToRemove(null);
+    } catch (err) {
+      setItemToRemove(null);
+      setActionError(err instanceof Error ? err.message : 'No se pudo quitar el ítem.');
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -231,66 +243,6 @@ export const ShoppingList: FC = () => {
               </div>
             )}
 
-            {/* Alta/baja manual: UI visible pero deshabilitada (pendiente de backend). */}
-            <fieldset
-              disabled
-              title="Pendiente de backend"
-              className="rounded-2xl border border-nido-border bg-nido-surface p-4 opacity-60"
-            >
-              <form
-                onSubmit={(e) => e.preventDefault()}
-                className="flex flex-col gap-2.5 sm:flex-row sm:items-center"
-              >
-                <div className="relative flex-1">
-                  <ShoppingBag className="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-nido-subtle" />
-                  <input
-                    type="text"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="Agregar producto manual a la lista..."
-                    title="Pendiente de backend"
-                    className="w-full cursor-not-allowed rounded-xl border border-nido-border bg-nido-bg py-2 pr-4 pl-9 text-xs text-nido-ink placeholder:text-nido-subtle"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    value={newItemQty}
-                    onChange={(e) => setNewItemQty(e.target.value)}
-                    aria-label="Cantidad"
-                    title="Pendiente de backend"
-                    className="w-20 cursor-not-allowed rounded-xl border border-nido-border bg-nido-bg px-3 py-2 text-xs text-nido-ink"
-                  />
-                  <select
-                    value={newItemUnit}
-                    onChange={(e) => setNewItemUnit(e.target.value as ProductUnit)}
-                    aria-label="Unidad"
-                    title="Pendiente de backend"
-                    className="cursor-not-allowed rounded-xl border border-nido-border bg-nido-surface px-3 py-2 text-xs text-nido-ink"
-                  >
-                    {PRODUCT_UNITS.map((unit) => (
-                      <option key={unit} value={unit}>
-                        {unit}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="submit"
-                    title="Pendiente de backend"
-                    className="inline-flex cursor-not-allowed items-center gap-1 rounded-xl bg-nido-olive px-4 py-2 text-xs font-semibold text-white opacity-80"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Sumar</span>
-                  </button>
-                </div>
-              </form>
-              <p className="mt-2 text-[11px] text-nido-subtle">
-                Agregar y quitar ítems manualmente: pendiente de backend.
-              </p>
-            </fieldset>
-
             {isLoading && !activeList ? (
               <p className="py-14 text-center text-xs text-nido-subtle">Cargando lista…</p>
             ) : items.length === 0 ? (
@@ -347,10 +299,10 @@ export const ShoppingList: FC = () => {
                       </span>
                       <button
                         type="button"
-                        disabled
-                        title="Pendiente de backend"
+                        onClick={() => setItemToRemove(item)}
+                        title="Quitar de la lista"
                         aria-label={`Quitar ${item.product_name} de la lista`}
-                        className="cursor-not-allowed rounded-lg p-1.5 text-nido-subtle opacity-50"
+                        className="cursor-pointer rounded-lg p-1.5 text-nido-subtle transition-colors hover:bg-nido-terracotta-bg hover:text-nido-terracotta-text"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -428,6 +380,23 @@ export const ShoppingList: FC = () => {
           </div>
         )}
       </div>
+
+      {itemToRemove && (
+        <ConfirmDialog
+          title="Quitar de la lista"
+          tone="danger"
+          confirmLabel={isRemoving ? 'Quitando…' : 'Quitar'}
+          description={
+            <>
+              Se quita <strong>{itemToRemove.product_name}</strong> de esta lista. Si el producto sigue
+              por debajo del mínimo, va a volver a aparecer la próxima vez que sincronices los
+              faltantes.
+            </>
+          }
+          onConfirm={() => void handleConfirmRemove()}
+          onCancel={() => setItemToRemove(null)}
+        />
+      )}
 
       {isConfirmOpen && (
         <ConfirmDialog
