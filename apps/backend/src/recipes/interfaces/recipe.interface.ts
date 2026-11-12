@@ -39,6 +39,32 @@ export interface RecipeDetail {
   can_cook: boolean;
 }
 
+/** Insumo descontado al cocinar. */
+export interface ConsumedIngredient {
+  product_id: string;
+  product_name: string;
+  unit: Unit;
+  quantity: number;
+  /** Stock que quedó después de descontar. */
+  current_stock: number;
+}
+
+/** Respuesta de POST /recipes/:id/cook (RF-11). */
+export interface CookResult {
+  recipe_id: string;
+  recipe_name: string;
+  consumed: ConsumedIngredient[];
+}
+
+/** Ingrediente que no alcanza, informado en el 400 de cocinar (RS-04). */
+export interface MissingIngredient {
+  product_id: string;
+  product_name: string;
+  unit: Unit;
+  required: number;
+  available: number;
+}
+
 /** Columnas de una receta `r` con la cantidad de ingredientes. */
 export const RECIPE_SUMMARY_COLUMNS = `r.id, r.name, r.servings, r.created_at,
   (SELECT count(*)::int FROM recipe_ingredients ri

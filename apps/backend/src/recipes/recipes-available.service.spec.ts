@@ -1,9 +1,13 @@
 import { Pool } from 'pg';
+import { InventoryService } from '../inventory';
 import { RecipesService } from './recipes.service';
 
 describe('RecipesService.findAvailable (RC-04)', () => {
   const pool = { query: jest.fn() };
-  const service = new RecipesService(pool as unknown as Pool);
+  const service = new RecipesService(
+    pool as unknown as Pool,
+    {} as InventoryService,
+  );
 
   beforeEach(() => jest.clearAllMocks());
 

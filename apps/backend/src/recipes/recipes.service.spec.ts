@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { InventoryService } from '../inventory';
 import { CreateRecipeDto } from './dto/recipe.dto';
 import { RecipesService } from './recipes.service';
 
@@ -80,7 +81,10 @@ describe('RecipesService (CRUD)', () => {
         .mockResolvedValueOnce({ rows: [recipeRow], rowCount: 1 })
         .mockResolvedValueOnce({ rows: ingredientRows, rowCount: 2 }),
     };
-    service = new RecipesService(pool as unknown as Pool);
+    service = new RecipesService(
+      pool as unknown as Pool,
+      {} as InventoryService,
+    );
   });
 
   describe('findOne', () => {

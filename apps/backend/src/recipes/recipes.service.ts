@@ -1,15 +1,34 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
+import { Unit } from '../common/enums/unit.enum';
 import { PG_POOL, withTransaction } from '../database';
+import { InventoryService, MovementType } from '../inventory';
 import { RecipeIngredientDto } from './dto/recipe-ingredient.dto';
 import { CreateRecipeDto, UpdateRecipeDto } from './dto/recipe.dto';
 import {
   AvailableRecipe,
+  ConsumedIngredient,
+  CookResult,
+  MissingIngredient,
   RECIPE_SUMMARY_COLUMNS,
   RecipeDetail,
   RecipeIngredient,
   RecipeSummary,
 } from './interfaces/recipe.interface';
+
+interface LockedIngredient {
+  product_id: string;
+  product_name: string;
+  unit: Unit;
+  quantity: number;
+  current_stock: number;
+}
 
 interface RecipeRow {
   id: string;
@@ -29,7 +48,88 @@ const UPDATABLE_FIELDS = ['name', 'instructions', 'servings'] as const;
  */
 @Injectable()
 export class RecipesService {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly inventoryService: InventoryService,
+  ) {}
+
+  /**
+   * RF-11: prepara la receta descontando todos sus ingredientes en una única
+   * transacción (RS-04), con bloqueo pesimista (RC-03, flujo 7.2):
+   *
+   * 1. Bloquea la receta (FOR SHARE) para que no cambien sus ingredientes
+   *    mientras se cocina.
+   * 2. Bloquea las filas de los productos (FOR UPDATE), ordenadas por id para
+   *    que dos cocciones simultáneas no se bloqueen mutuamente (deadlock).
+   * 3. Con las filas bloqueadas, verifica que alcance cada ingrediente; si
+   *    falta alguno responde 400 con el detalle y no descuenta nada.
+   * 4. Descuenta cada insumo con un movimiento `recipe_consumption` (RC-05)
+   *    a través de InventoryService, en la misma transacción.
+   */
+  async cook(userId: string, recipeId: string): Promise<CookResult> {
+    return withTransaction(this.pool, async (client) => {
+      const recipe = await client.query<{ name: string }>(
+        'SELECT name FROM recipes WHERE id = $1 AND user_id = $2 FOR SHARE',
+        [recipeId, userId],
+      );
+      if (recipe.rows.length === 0) {
+        throw new NotFoundException('Receta no encontrada');
+      }
+      const recipeName = recipe.rows[0].name;
+
+      const { rows: ingredients } = await client.query<LockedIngredient>(
+        `SELECT p.id AS product_id, p.name AS product_name, p.unit,
+                ri.quantity, p.current_stock
+           FROM recipe_ingredients ri
+           JOIN products p ON p.id = ri.product_id
+          WHERE ri.recipe_id = $1 AND p.user_id = $2
+          ORDER BY p.id
+            FOR UPDATE OF p`,
+        [recipeId, userId],
+      );
+
+      const missing: MissingIngredient[] = ingredients
+        .filter((i) => i.current_stock < i.quantity)
+        .map((i) => ({
+          product_id: i.product_id,
+          product_name: i.product_name,
+          unit: i.unit,
+          required: i.quantity,
+          available: i.current_stock,
+        }));
+      if (missing.length > 0) {
+        throw new BadRequestException({
+          statusCode: HttpStatus.BAD_REQUEST,
+          error: 'Bad Request',
+          message: `Stock insuficiente para cocinar "${recipeName}"`,
+          missing,
+        });
+      }
+
+      const consumed: ConsumedIngredient[] = [];
+      for (const ingredient of ingredients) {
+        const { current_stock } = await this.inventoryService.applyMovement(
+          {
+            userId,
+            productId: ingredient.product_id,
+            quantityChange: -ingredient.quantity,
+            type: MovementType.RecipeConsumption,
+            reason: `Receta: ${recipeName}`,
+          },
+          client,
+        );
+        consumed.push({
+          product_id: ingredient.product_id,
+          product_name: ingredient.product_name,
+          unit: ingredient.unit,
+          quantity: ingredient.quantity,
+          current_stock,
+        });
+      }
+
+      return { recipe_id: recipeId, recipe_name: recipeName, consumed };
+    });
+  }
 
   async findAll(userId: string): Promise<RecipeSummary[]> {
     const { rows } = await this.pool.query<RecipeSummary>(

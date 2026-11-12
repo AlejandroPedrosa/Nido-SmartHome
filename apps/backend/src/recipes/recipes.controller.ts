@@ -14,6 +14,7 @@ import { uuidParam } from '../common/pipes/uuid-param.pipe';
 import { CreateRecipeDto, UpdateRecipeDto } from './dto/recipe.dto';
 import type {
   AvailableRecipe,
+  CookResult,
   RecipeDetail,
   RecipeSummary,
 } from './interfaces/recipe.interface';
@@ -72,5 +73,18 @@ export class RecipesController {
     @Param('id', uuidParam('id')) id: string,
   ): Promise<void> {
     return this.recipesService.remove(userId, id);
+  }
+
+  /**
+   * RF-11: prepara la receta y descuenta sus ingredientes de forma atómica.
+   * 400 con el detalle de faltantes si algún insumo no alcanza (RS-04).
+   */
+  @Post(':id/cook')
+  @HttpCode(HttpStatus.OK)
+  cook(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+  ): Promise<CookResult> {
+    return this.recipesService.cook(userId, id);
   }
 }
