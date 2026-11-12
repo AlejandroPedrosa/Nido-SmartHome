@@ -174,3 +174,22 @@ nido-smarthome/
 * [Script DDL (schema.sql)](docs/database/schema.sql)
 * [Módulos y Arquitectura](docs/modulos.md)
 * [Wireframes y Diseño de UI](docs/wireframes.md)
+* [Frontend (variables y deploy)](apps/frontend/README.md)
+* [Backend (Docker / EC2)](apps/backend/README.md)
+
+---
+
+# Despliegue
+
+| Capa | Hosting | Guía |
+|------|---------|------|
+| Frontend | Vercel (`apps/frontend`, variable `VITE_API_URL`) | [apps/frontend/README.md](apps/frontend/README.md) |
+| Backend | AWS EC2 + Docker + Nginx + HTTPS | [apps/backend/README.md](apps/backend/README.md) § Docker / EC2 |
+| Base de datos / Auth | Supabase Cloud (proyecto `nido`) | [apps/backend/README.md](apps/backend/README.md) |
+
+**URLs (completar al publicar):**
+
+* Frontend: `https://<proyecto>.vercel.app`
+* API: `https://api.<dominio>`
+
+Tras publicar el frontend, `CORS_ORIGIN` del backend debe incluir esa URL.
