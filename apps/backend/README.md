@@ -61,3 +61,147 @@ Notas de seguridad:
 * La contraseña dentro de `DATABASE_URL` da acceso total a la base: nunca commitearla ni compartirla por canales públicos.
 * La API **no** usa la *Secret key* (`sb_secret_...`, antes `service_role`): da acceso total y saltea RLS. La validación de entorno rechaza una Secret key cargada por error en `SUPABASE_PUBLISHABLE_KEY`. Toda consulta se filtra por el `user_id` extraído del JWT validado.
 * En EC2 las variables se cargan en el entorno del proceso (archivo `.env` del servidor o configuración de PM2/Docker), nunca dentro de la imagen ni del repositorio.
+
+---
+
+## Desarrollo local
+
+```bash
+cd apps/backend
+npm install
+cp .env.example .env    # completar los valores
+npm run start:dev       # API en http://localhost:3000 con recarga automática
+```
+
+| Script | Uso |
+|---|---|
+| `npm run check` | Lint + formato + tipos + tests (lo mismo que valida el CI) |
+| `npm run lint:fix` / `npm run format` | Corrigen estilo y formato |
+| `npm test` / `npm run test:watch` | Tests unitarios |
+| `npm run build` y `npm run start:prod` | Compilar y ejecutar la versión de producción |
+
+---
+
+## Docker
+
+La imagen se construye con el [`Dockerfile`](Dockerfile) multi-stage: compila con todas las dependencias y publica una imagen final liviana (Node 24 Alpine) con solo `dist/`, las dependencias de producción y el certificado de Supabase. Se ejecuta con un usuario sin privilegios y expone un `HEALTHCHECK` sobre `/health`.
+
+Las credenciales **no** entran a la imagen (`.dockerignore` excluye `.env`): se inyectan al levantar el contenedor con [`docker-compose.yml`](docker-compose.yml), que lee `apps/backend/.env`.
+
+```bash
+cd apps/backend
+docker compose up -d --build     # construir y levantar
+docker compose ps                # estado (debe decir "healthy")
+docker compose logs -f api       # logs
+docker compose down              # detener
+```
+
+El contenedor publica el puerto solo en `127.0.0.1:3000`: en el servidor, el acceso público entra por Nginx con HTTPS.
+
+---
+
+## Despliegue en AWS EC2
+
+### 1. Crear la instancia
+
+| Opción | Valor recomendado |
+|---|---|
+| AMI | Ubuntu Server 24.04 LTS |
+| Tipo | `t2.micro` o `t3.micro` (capa gratuita) |
+| Región | **`us-east-1`**, la misma que el pooler de Supabase (`aws-0-us-east-1`): menor latencia entre API y base |
+| Par de claves | Crear uno y guardar el `.pem` (no se puede volver a descargar) |
+| Security group | **22 (SSH)** solo desde tu IP · **80 (HTTP)** y **443 (HTTPS)** desde cualquier lugar. **No** abrir el 3000 |
+| Almacenamiento | 20 GB gp3 |
+
+Opcional: asociar una **Elastic IP** para que la IP pública no cambie al reiniciar la instancia.
+
+### 2. Preparar el servidor
+
+```bash
+ssh -i nido.pem ubuntu@<IP_PUBLICA>
+
+sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get install -y docker.io docker-compose-v2 nginx git
+sudo usermod -aG docker ubuntu   # usar docker sin sudo (requiere volver a entrar por SSH)
+
+# Swap de 2 GB: con 1 GB de RAM, compilar la imagen puede quedarse sin memoria
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### 3. Código y variables de entorno
+
+```bash
+git clone https://github.com/AlejandroPedrosa/Nido-SmartHome.git
+cd Nido-SmartHome/apps/backend
+cp .env.example .env
+nano .env        # completar con los valores reales
+chmod 600 .env   # solo el usuario ubuntu puede leerlo
+```
+
+En producción, `CORS_ORIGIN` debe ser la URL del frontend en Vercel (por ejemplo `https://nido-smarthome.vercel.app`). `NODE_ENV` y `PORT` los fija `docker-compose.yml`.
+
+### 4. Levantar la API
+
+```bash
+docker compose up -d --build
+docker compose ps                     # esperar a que figure "healthy"
+curl http://127.0.0.1:3000/health     # {"status":"ok",...}
+```
+
+Si el contenedor se reinicia en bucle, `docker compose logs api` muestra el motivo (por ejemplo, una variable de entorno inválida o la base inaccesible).
+
+### 5. Nginx como proxy inverso
+
+Crear `/etc/nginx/sites-available/nido-api`:
+
+```nginx
+server {
+    listen 80;
+    server_name api.tu-dominio.com;   # o la IP pública mientras no haya dominio
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/nido-api /etc/nginx/sites-enabled/
+sudo rm /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+curl http://<IP_PUBLICA>/health
+```
+
+### 6. HTTPS (obligatorio para el frontend en Vercel)
+
+El frontend en Vercel se sirve por HTTPS y el navegador **bloquea** las llamadas a una API por HTTP (contenido mixto). Para el certificado gratuito de Let's Encrypt hace falta un **nombre de dominio** que apunte a la IP de la instancia: un dominio propio o un subdominio gratuito (por ejemplo, DuckDNS). Con el registro DNS apuntando a la Elastic IP:
+
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d api.tu-dominio.com   # configura HTTPS y la renovación automática
+```
+
+El frontend debe usar entonces `https://api.tu-dominio.com` como URL base de la API.
+
+### 7. Actualizar a una nueva versión
+
+```bash
+cd ~/Nido-SmartHome && git pull
+cd apps/backend && docker compose up -d --build
+docker image prune -f    # borra imágenes viejas sin uso
+```
+
+### Checklist de producción
+
+* [ ] `.env` del servidor completo, con `chmod 600` y fuera del repositorio.
+* [ ] Security group sin el puerto 3000 abierto; SSH restringido a tu IP.
+* [ ] `docker compose ps` en estado `healthy`.
+* [ ] HTTPS activo y `CORS_ORIGIN` con la URL exacta del frontend.
+* [ ] En Supabase, *Authentication → URL Configuration*: **Site URL** y **Redirect URLs** con la URL del frontend (para los links de confirmación de email).
