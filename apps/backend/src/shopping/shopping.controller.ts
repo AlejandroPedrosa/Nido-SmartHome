@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -65,6 +66,21 @@ export class ShoppingController {
       productId,
       dto.purchased,
     );
+  }
+
+  /**
+   * Quita un ítem de la lista (204). Si el producto sigue bajo mínimo,
+   * vuelve en la próxima sincronización; si la lista queda vacía, se
+   * elimina. 409 si ya fue confirmada; 404 si es ajena o el ítem no está.
+   */
+  @Delete(':id/items/:productId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeItem(
+    @CurrentUser('id') userId: string,
+    @Param('id', uuidParam('id')) id: string,
+    @Param('productId', uuidParam('productId')) productId: string,
+  ): Promise<void> {
+    return this.shoppingService.removeItem(userId, id, productId);
   }
 
   /**

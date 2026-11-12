@@ -209,6 +209,33 @@ export class ShoppingService {
     });
   }
 
+  /**
+   * Quita un ítem de la lista activa. Solo lo saca de esta lista: si el
+   * producto sigue bajo mínimo, la próxima generación lo vuelve a incluir
+   * (LC-03). Si la lista queda vacía se elimina, como en LC-06. 409 si la
+   * lista ya fue confirmada; 404 si es ajena o el producto no está en ella.
+   */
+  async removeItem(
+    userId: string,
+    listId: string,
+    productId: string,
+  ): Promise<void> {
+    await withTransaction(this.pool, async (client) => {
+      await this.lockOpenList(client, userId, listId);
+
+      const { rowCount } = await client.query(
+        `DELETE FROM shopping_list_items
+          WHERE shopping_list_id = $1 AND product_id = $2`,
+        [listId, productId],
+      );
+      if (rowCount === 0) {
+        throw new NotFoundException('El producto no está en la lista');
+      }
+
+      await this.deleteListIfEmpty(client, listId);
+    });
+  }
+
   /** Lista con sus ítems. 404 si no existe o es ajena (MT-03). */
   async findOne(userId: string, listId: string): Promise<ShoppingListDetail> {
     return this.loadList(this.pool, userId, listId);

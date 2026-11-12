@@ -217,6 +217,7 @@ Generación consolidada, sincronización y liquidación de listas de reposición
 | GET | `/shopping/lists/:id` | Obtener lista detallada con sus ítems |
 | POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados). Sin faltantes responde array vacío, salvo que la activa conserve ítems comprados: en ese caso la devuelve |
 | PATCH | `/shopping/lists/:id/items/:productId` | Marcar o desmarcar un ítem como comprado (`purchased`) |
+| DELETE | `/shopping/lists/:id/items/:productId` | Quitar un ítem de la lista activa (204). Si la lista queda vacía se elimina; 409 si ya fue confirmada (regla LC-07) |
 | POST | `/shopping/lists/:id/purchase` | Confirmar compra de ítems marcados, sumar a stock y cerrar lista dentro de transacción |
 
 ---
@@ -317,6 +318,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | LC-04 | Confirmación única | Intentar confirmar una lista que ya posee `is_purchased = true` es rechazado dentro de la transacción con código HTTP 409 (Conflict) |
 | LC-05 | Ítems obligatorios al confirmar | Intentar confirmar una lista sin ningún ítem marcado como comprado (`purchased = true`) responde HTTP 400 (Bad Request) dentro de la transacción |
 | LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa y responde HTTP 200. Si la lista activa queda vacía se elimina y la respuesta es un array vacío; si conserva ítems marcados como comprados, se devuelve la lista para que pueda confirmarse |
+| LC-07 | Quitar ítems | Un ítem puede quitarse de la lista activa mientras no esté confirmada (si ya lo está, HTTP 409). Quitarlo lo saca solo de esa lista: si el producto sigue bajo mínimo, la próxima sincronización lo vuelve a incluir (LC-03). Si la lista queda sin ítems, se elimina |
 
 ### 5.4 Recetas y consumo
 
