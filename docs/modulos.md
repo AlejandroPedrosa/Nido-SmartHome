@@ -441,7 +441,8 @@ graph TB
     end
 
     subgraph backend [Backend - AWS EC2]
-        NestJS[NestJS API REST]
+        Nginx[Nginx - TLS Let's Encrypt]
+        NestJS[NestJS API REST - Docker]
         AuthModule[Auth Module]
         ProductsModule[Products Module]
         ContainersModule[Containers Module]
@@ -457,7 +458,8 @@ graph TB
     end
 
     subgraph cicd [CI/CD]
-        GitHubActions[GitHub Actions]
+        GitHubActions[GitHub Actions - CI y deploy por SSH]
+        VercelGit[Integración Git de Vercel]
     end
 
     User --> Browser
@@ -465,7 +467,8 @@ graph TB
     React --> Vite
     React --> Tailwind
     React --> Zustand
-    React -->|HTTP/REST con Bearer JWT| NestJS
+    React -->|HTTPS/REST con Bearer JWT - nido-api.duckdns.org| Nginx
+    Nginx -->|Proxy a 127.0.0.1:3000| NestJS
 
     NestJS --> AuthModule
     NestJS --> ProductsModule
@@ -483,8 +486,8 @@ graph TB
     ShoppingModule -->|Transacciones ACID (pg)| DatabaseModule
     DatabaseModule -->|Pool pg (Conexión directa)| PostgreSQL
 
-    GitHubActions -->|Deploy automático| React
-    GitHubActions -->|Deploy automático| NestJS
+    VercelGit -->|Deploy automático de main| React
+    GitHubActions -->|Deploy por SSH tras CI verde en main| NestJS
 ```
 
 | Capa | Tecnología | Responsabilidad |
@@ -494,8 +497,8 @@ graph TB
 | API REST | NestJS, TypeScript | Lógica de negocio, autorización y validación |
 | Autenticación | Supabase Auth | Gestión de identidad, contraseñas y emisión de JWT |
 | Persistencia y Transacciones | Pool `pg` hacia PostgreSQL (Supabase Cloud) | Acceso a datos unificado, integridad referencial y transacciones ACID |
-| Hosting e Infraestructura | Vercel, AWS EC2 | Despliegue de cliente web y backend |
-| CI/CD | GitHub Actions | Automatización de pruebas y despliegue |
+| Hosting e Infraestructura | Vercel, AWS EC2 (Docker + Nginx), DuckDNS | Despliegue de cliente web y backend; HTTPS con Let's Encrypt |
+| CI/CD | GitHub Actions, integración Git de Vercel | CI en cada PR; desde `main`, deploy del backend por SSH y del frontend por Vercel |
 
 ---
 

@@ -104,33 +104,60 @@ docker compose logs -f api       # logs
 docker compose down              # detener
 ```
 
-El contenedor publica el puerto solo en `127.0.0.1:3000`: en el servidor, el acceso público entra por Nginx con HTTPS.
+El contenedor publica el puerto solo en `127.0.0.1:3000`: en el servidor, el acceso público entra por Nginx con HTTPS (ver *Despliegue en producción*).
 
 ---
 
-## Despliegue en AWS EC2
+## Despliegue en producción
 
-### 1. Crear la instancia
+```text
+Vercel (frontend, rama main) ──HTTPS──▶ nido-api.duckdns.org
+                                          │
+                              EC2: Nginx (TLS, Let's Encrypt)
+                                          │ 127.0.0.1:3000
+                              Docker: API NestJS ──▶ Supabase Cloud
+```
+
+* **Producción sale de `main`.** `develop` es la rama de integración; una versión se publica con un PR `develop → main`.
+* **Frontend**: Vercel despliega `main` por su integración con GitHub (ver [`apps/frontend/README.md`](../frontend/README.md)).
+* **Backend**: el workflow [`backend-deploy.yml`](../../.github/workflows/backend-deploy.yml) despliega en EC2 cada push a `main` que pasa la CI (ver *Despliegue continuo*).
+
+Los pasos 1 a 6 se hacen una sola vez.
+
+### 1. Crear la instancia EC2
 
 | Opción | Valor recomendado |
 |---|---|
 | AMI | Ubuntu Server 24.04 LTS |
-| Tipo | `t2.micro` o `t3.micro` (capa gratuita) |
+| Tipo | `t3.micro` (capa gratuita) |
 | Región | **`us-east-1`**, la misma que el pooler de Supabase (`aws-0-us-east-1`): menor latencia entre API y base |
 | Par de claves | Crear uno y guardar el `.pem` (no se puede volver a descargar) |
-| Security group | **22 (SSH)** solo desde tu IP · **80 (HTTP)** y **443 (HTTPS)** desde cualquier lugar. **No** abrir el 3000 |
+| Security group | **22 (SSH)**, **80 (HTTP)** y **443 (HTTPS)** desde cualquier lugar. **No** abrir el 3000 |
 | Almacenamiento | 20 GB gp3 |
 
-Opcional: asociar una **Elastic IP** para que la IP pública no cambie al reiniciar la instancia.
+Asociar una **Elastic IP** a la instancia: el DNS apunta a ella y no cambia al reiniciar. Una Elastic IP **sin asociar** genera costo: liberarla si se elimina la instancia.
 
-### 2. Preparar el servidor
+El puerto 22 queda abierto a internet porque los runners de GitHub Actions no tienen IP fija. Es aceptable porque Ubuntu en EC2 solo admite autenticación por clave (sin contraseñas) y se suma `fail2ban` (paso 3).
+
+> **Costos:** antes de crear la instancia, en *Billing and Cost Management → Budgets* crear un **Zero spend budget** (avisa por email ante el primer gasto) y activar las alertas de la capa gratuita en *Billing preferences*.
+
+### 2. Subdominio en DuckDNS
+
+1. Ingresar a [duckdns.org](https://www.duckdns.org) (con GitHub o Google) y crear el subdominio, por ejemplo `nido-api` → `nido-api.duckdns.org`.
+2. En **current ip** cargar la **Elastic IP** y guardar (*update ip*).
+3. Verificar desde la computadora: `dig +short nido-api.duckdns.org` debe devolver la Elastic IP.
+
+Con Elastic IP la dirección es fija: no hace falta el script de actualización periódica de DuckDNS. Si el subdominio es otro, reemplazarlo en este documento, en [`deploy/nginx/nido-api.conf`](deploy/nginx/nido-api.conf) y en las variables de Vercel y GitHub.
+
+### 3. Preparar el servidor
 
 ```bash
-ssh -i nido.pem ubuntu@<IP_PUBLICA>
+ssh -i nido.pem ubuntu@<ELASTIC_IP>
 
 sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y docker.io docker-compose-v2 nginx git
+sudo apt-get install -y docker.io docker-compose-v2 nginx git fail2ban
 sudo usermod -aG docker ubuntu   # usar docker sin sudo (requiere volver a entrar por SSH)
+sudo systemctl enable --now fail2ban   # bloquea IPs con intentos de SSH fallidos
 
 # Swap de 2 GB: con 1 GB de RAM, compilar la imagen puede quedarse sin memoria
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
@@ -138,78 +165,85 @@ sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### 3. Código y variables de entorno
+### 4. Código, variables de entorno y primer arranque
 
 ```bash
 git clone https://github.com/AlejandroPedrosa/Nido-SmartHome.git
-cd Nido-SmartHome/apps/backend
+cd Nido-SmartHome && git checkout main
+cd apps/backend
 cp .env.example .env
 nano .env        # completar con los valores reales
 chmod 600 .env   # solo el usuario ubuntu puede leerlo
+./deploy/deploy.sh   # construye, levanta y espera a que quede "healthy"
 ```
 
-En producción, `CORS_ORIGIN` debe ser la URL del frontend en Vercel (por ejemplo `https://nido-smarthome.vercel.app`). `NODE_ENV` y `PORT` los fija `docker-compose.yml`.
+En producción:
 
-### 4. Levantar la API
+* `CORS_ORIGIN` y `FRONTEND_URL`: la URL exacta del frontend en Vercel (por ejemplo `https://nido-smarthome.vercel.app`, sin barra final).
+* `NODE_ENV` y `PORT` los fija `docker-compose.yml`.
+
+[`deploy/deploy.sh`](deploy/deploy.sh) trae la última versión de `main`, ejecuta `docker compose up -d --build`, espera hasta 90 s a que el healthcheck marque la API como `healthy` (si no, muestra los logs y falla) y borra imágenes viejas. Verificar: `curl http://127.0.0.1:3000/health`.
+
+### 5. Nginx y HTTPS
+
+El frontend en Vercel se sirve por HTTPS y el navegador **bloquea** las llamadas a una API por HTTP (contenido mixto), así que HTTPS es obligatorio. La configuración de Nginx está versionada en [`deploy/nginx/nido-api.conf`](deploy/nginx/nido-api.conf). Se **copia** (no se enlaza), porque certbot edita el archivo instalado al agregar HTTPS:
 
 ```bash
-docker compose up -d --build
-docker compose ps                     # esperar a que figure "healthy"
-curl http://127.0.0.1:3000/health     # {"status":"ok",...}
-```
-
-Si el contenedor se reinicia en bucle, `docker compose logs api` muestra el motivo (por ejemplo, una variable de entorno inválida o la base inaccesible).
-
-### 5. Nginx como proxy inverso
-
-Crear `/etc/nginx/sites-available/nido-api`:
-
-```nginx
-server {
-    listen 80;
-    server_name api.tu-dominio.com;   # o la IP pública mientras no haya dominio
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-```bash
+cd ~/Nido-SmartHome
+sudo cp apps/backend/deploy/nginx/nido-api.conf /etc/nginx/sites-available/nido-api
 sudo ln -s /etc/nginx/sites-available/nido-api /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
-curl http://<IP_PUBLICA>/health
-```
+curl http://nido-api.duckdns.org/health
 
-### 6. HTTPS (obligatorio para el frontend en Vercel)
-
-El frontend en Vercel se sirve por HTTPS y el navegador **bloquea** las llamadas a una API por HTTP (contenido mixto). Para el certificado gratuito de Let's Encrypt hace falta un **nombre de dominio** que apunte a la IP de la instancia: un dominio propio o un subdominio gratuito (por ejemplo, DuckDNS). Con el registro DNS apuntando a la Elastic IP:
-
-```bash
 sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d api.tu-dominio.com   # configura HTTPS y la renovación automática
+sudo certbot --nginx -d nido-api.duckdns.org   # certificado, bloque 443 y redirección HTTP→HTTPS
+curl https://nido-api.duckdns.org/health
 ```
 
-El frontend debe usar entonces `https://api.tu-dominio.com` como URL base de la API.
+Certbot instala un timer que renueva el certificado automáticamente (`sudo certbot renew --dry-run` lo prueba).
 
-### 7. Actualizar a una nueva versión
+### 6. Despliegue continuo (GitHub Actions)
+
+El workflow [`backend-deploy.yml`](../../.github/workflows/backend-deploy.yml) corre cuando **Backend CI** termina en verde por un push a `main` (o a mano desde *Actions → Backend Deploy → Run workflow*). Entra por SSH, ejecuta `deploy/deploy.sh` y después verifica `/health` por HTTPS. Solo se dispara con el archivo presente en `main`, la rama por defecto.
+
+**Clave SSH dedicada al CD** (distinta del `.pem` personal), generada en la computadora:
 
 ```bash
-cd ~/Nido-SmartHome && git pull
-cd apps/backend && docker compose up -d --build
-docker image prune -f    # borra imágenes viejas sin uso
+ssh-keygen -t ed25519 -C "github-actions-nido" -f ~/.ssh/nido_deploy -N ""
+# Autorizarla en el servidor
+ssh -i nido.pem ubuntu@<ELASTIC_IP> "cat >> ~/.ssh/authorized_keys" < ~/.ssh/nido_deploy.pub
+# Huella de la clave de host del servidor (para EC2_HOST_FINGERPRINT)
+ssh-keyscan -t ed25519 <ELASTIC_IP> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 ```
+
+En GitHub → *Settings → Environments* → crear **`production`** y cargar:
+
+| Tipo | Nombre | Valor |
+|---|---|---|
+| Secret | `EC2_HOST` | Elastic IP (o `nido-api.duckdns.org`) |
+| Secret | `EC2_USER` | `ubuntu` |
+| Secret | `EC2_SSH_KEY` | Contenido completo de `~/.ssh/nido_deploy` (la clave **privada**) |
+| Secret | `EC2_HOST_FINGERPRINT` | La huella `SHA256:...` del comando anterior |
+| Variable | `API_URL` | `https://nido-api.duckdns.org` (sin barra final) |
+
+La clave privada solo vive en GitHub y en la computadora que la generó: no se commitea ni se comparte.
+
+### 7. Publicar una versión
+
+1. PR `develop → main` y merge.
+2. Se ejecutan **Backend CI** y luego **Backend Deploy** (verde = API actualizada y `/health` OK) y Vercel publica el frontend.
+3. Prueba de humo sobre la URL de Vercel (ver checklist del frontend).
+
+Deploy manual, si hiciera falta: `ssh -i nido.pem ubuntu@<ELASTIC_IP> ~/Nido-SmartHome/apps/backend/deploy/deploy.sh`. Si el contenedor no levanta, `docker compose logs api` (en `apps/backend`) muestra el motivo (por ejemplo, una variable de entorno inválida o la base inaccesible).
 
 ### Checklist de producción
 
-* [ ] `.env` del servidor completo, con `chmod 600` y fuera del repositorio.
-* [ ] Security group sin el puerto 3000 abierto; SSH restringido a tu IP.
+* [ ] Zero spend budget y alertas de capa gratuita activos en AWS.
+* [ ] Elastic IP asociada y subdominio de DuckDNS apuntando a ella.
+* [ ] `.env` del servidor completo, con `chmod 600` y fuera del repositorio; contraseña de la base rotada.
+* [ ] Security group sin el puerto 3000 abierto; `fail2ban` activo.
 * [ ] `docker compose ps` en estado `healthy`.
-* [ ] HTTPS activo y `CORS_ORIGIN` con la URL exacta del frontend.
-* [ ] En Supabase, *Authentication → URL Configuration*: **Site URL** y **Redirect URLs** con la URL del frontend (para los links de confirmación de email).
+* [ ] HTTPS activo y `CORS_ORIGIN` / `FRONTEND_URL` con la URL exacta de Vercel.
+* [ ] Environment `production` en GitHub con los secrets y la variable `API_URL`.
+* [ ] En Supabase, *Authentication → URL Configuration*: **Site URL** = URL de Vercel; **Redirect URLs** = URL de Vercel con `/**` y `http://localhost:5173/**`.
