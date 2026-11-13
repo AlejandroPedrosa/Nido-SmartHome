@@ -29,6 +29,13 @@ type ActiveModal =
   | { kind: 'delete'; productId: string }
   | null;
 
+type OpenMenuState = {
+  productId: string;
+  top: number;
+  right: number;
+  openUpward: boolean;
+} | null;
+
 export const Products: FC = () => {
   const products = useProductsStore((s) => s.products);
   const filters = useProductsStore((s) => s.filters);
@@ -42,7 +49,7 @@ export const Products: FC = () => {
   const fetchContainers = useContainersStore((s) => s.fetchContainers);
 
   const [searchInput, setSearchInput] = useState(filters.name ?? '');
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<OpenMenuState>(null);
   const [modal, setModal] = useState<ActiveModal>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -63,6 +70,17 @@ export const Products: FC = () => {
     }, 300);
     return () => window.clearTimeout(handle);
   }, [searchInput, setFilters, fetchProducts]);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [openMenu]);
 
   const categories = useMemo(
     () =>
@@ -125,7 +143,7 @@ export const Products: FC = () => {
   };
 
   const openFromMenu = (next: NonNullable<ActiveModal>) => {
-    setOpenMenuId(null);
+    setOpenMenu(null);
     if (next.kind === 'delete') setDeleteError(null);
     setModal(next);
   };
@@ -267,7 +285,7 @@ export const Products: FC = () => {
               </thead>
               <tbody className="divide-y divide-nido-border text-xs">
                 {products.map((product) => {
-                  const isMenuOpen = openMenuId === product.id;
+                  const isMenuOpen = openMenu?.productId === product.id;
 
                   return (
                     <tr key={product.id} className="transition-colors hover:bg-nido-bg/60">
@@ -316,10 +334,24 @@ export const Products: FC = () => {
                       </td>
 
                       <td className="px-5 py-4 text-right">
-                        <div className="relative inline-block text-left">
+                        <div className="inline-block text-left">
                           <button
                             type="button"
-                            onClick={() => setOpenMenuId(isMenuOpen ? null : product.id)}
+                            onClick={(e) => {
+                              if (isMenuOpen) {
+                                setOpenMenu(null);
+                                return;
+                              }
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const spaceBelow = window.innerHeight - rect.bottom;
+                              const openUpward = spaceBelow < 180;
+                              setOpenMenu({
+                                productId: product.id,
+                                top: openUpward ? rect.top - 4 : rect.bottom + 4,
+                                right: window.innerWidth - rect.right,
+                                openUpward,
+                              });
+                            }}
                             aria-label={`Acciones para ${product.name}`}
                             aria-expanded={isMenuOpen}
                             className="cursor-pointer rounded-lg p-1.5 text-nido-subtle transition-colors hover:bg-nido-bg hover:text-nido-ink"
@@ -327,15 +359,22 @@ export const Products: FC = () => {
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
 
-                          {isMenuOpen && (
+                          {isMenuOpen && openMenu && (
                             <>
                               <button
                                 type="button"
                                 aria-label="Cerrar menú"
-                                onClick={() => setOpenMenuId(null)}
-                                className="fixed inset-0 z-10 cursor-default"
+                                onClick={() => setOpenMenu(null)}
+                                className="fixed inset-0 z-40 cursor-default"
                               />
-                              <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-nido-border bg-nido-surface py-1 shadow-lg">
+                              <div
+                                style={{
+                                  top: openMenu.top,
+                                  right: openMenu.right,
+                                  transform: openMenu.openUpward ? 'translateY(-100%)' : undefined,
+                                }}
+                                className="fixed z-50 w-48 overflow-hidden rounded-xl border border-nido-border bg-nido-surface py-1 shadow-lg"
+                              >
                                 <button
                                   type="button"
                                   onClick={() => openFromMenu({ kind: 'adjust', productId: product.id })}
