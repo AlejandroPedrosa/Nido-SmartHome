@@ -85,6 +85,8 @@ export interface Container {
   name: string;
   created_at: string;
   product_count: number;
+  /** Productos asignados bajo mínimo (RS-01): badge "N por reponer". */
+  low_stock_count: number;
 }
 
 export interface ContainerDetail extends Container {
