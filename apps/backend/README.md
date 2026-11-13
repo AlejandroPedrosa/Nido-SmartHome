@@ -55,12 +55,20 @@ La API lee su configuración de un archivo `.env` en `apps/backend/`. Ese archiv
 | `SUPABASE_URL` | Sí | `https://<project-ref>.supabase.co` | Dashboard → *Project Settings* → *Data API* → *Project URL*. Solo la URL base, **sin** `/rest/v1` |
 | `SUPABASE_PUBLISHABLE_KEY` | Sí | `sb_publishable_...` | Dashboard → *Project Settings* → *API Keys* → *Publishable key* (reemplaza a la antigua clave `anon`) |
 | `CORS_ORIGIN` | Sí | `http://localhost:5173` | URL del frontend (Vite en local, dominio de Vercel en producción) |
+| `FRONTEND_URL` | No (default: primer origen de `CORS_ORIGIN`) | `https://nido-smarthome.vercel.app` | URL base del frontend para el link del email de confirmación de cuenta (redirige a `/login`). Ver *Emails de confirmación* |
 
 Notas de seguridad:
 
 * La contraseña dentro de `DATABASE_URL` da acceso total a la base: nunca commitearla ni compartirla por canales públicos.
 * La API **no** usa la *Secret key* (`sb_secret_...`, antes `service_role`): da acceso total y saltea RLS. La validación de entorno rechaza una Secret key cargada por error en `SUPABASE_PUBLISHABLE_KEY`. Toda consulta se filtra por el `user_id` extraído del JWT validado.
 * En EC2 las variables se cargan en el entorno del proceso (archivo `.env` del servidor o configuración de PM2/Docker), nunca dentro de la imagen ni del repositorio.
+
+### Emails de confirmación
+
+Con la confirmación de email activa, el registro envía un link que primero confirma la cuenta en Supabase y después redirige a `<FRONTEND_URL>/login`, donde el frontend muestra el resultado. Para que Supabase acepte esa redirección, en el dashboard → *Authentication* → *URL Configuration*:
+
+* **Site URL**: la URL del frontend en producción (o `http://localhost:5173` mientras no haya deploy). Es el destino por defecto: si queda en `http://localhost:3000`, los links llevan a la API.
+* **Redirect URLs**: `http://localhost:5173/**` y la URL de Vercel con `/**`, para que funcionen el entorno local y el desplegado con el mismo proyecto.
 
 ---
 

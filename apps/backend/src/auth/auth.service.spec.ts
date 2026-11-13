@@ -36,6 +36,7 @@ describe('AuthService', () => {
   const service = new AuthService(
     { auth } as unknown as AppSupabaseClient,
     pool as unknown as Pool,
+    'http://localhost:5173',
   );
 
   beforeEach(() => {
@@ -59,7 +60,11 @@ describe('AuthService', () => {
 
       const result = await service.register(credentials);
 
-      expect(auth.signUp).toHaveBeenCalledWith(credentials);
+      // El link de confirmación lleva al login del frontend, no a la Site URL.
+      expect(auth.signUp).toHaveBeenCalledWith({
+        ...credentials,
+        options: { emailRedirectTo: 'http://localhost:5173/login' },
+      });
       expect(pool.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO containers'),
         ['user-1', DEFAULT_CONTAINERS],

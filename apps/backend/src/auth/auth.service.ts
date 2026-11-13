@@ -11,6 +11,7 @@ import { Pool } from 'pg';
 import type { AppSupabaseClient } from '../database';
 import { PG_POOL, SUPABASE_CLIENT } from '../database';
 import { mapAuthError } from './auth-error.mapper';
+import { FRONTEND_URL } from './auth.constants';
 import { DEFAULT_CONTAINERS } from './default-containers';
 import type {
   AuthSessionDto,
@@ -35,6 +36,7 @@ export class AuthService {
   constructor(
     @Inject(SUPABASE_CLIENT) private readonly supabase: AppSupabaseClient,
     @Inject(PG_POOL) private readonly pool: Pool,
+    @Inject(FRONTEND_URL) private readonly frontendUrl: string,
   ) {}
 
   /**
@@ -46,6 +48,11 @@ export class AuthService {
    * después los contenedores con un único INSERT (atómico e idempotente).
    * Si ese INSERT falla, el usuario queda creado sin contenedores: se
    * registra el error con su id y se responde 500.
+   *
+   * El link del email de confirmación lleva al login del frontend
+   * (`emailRedirectTo`). Esa URL tiene que estar en *Authentication → URL
+   * Configuration → Redirect URLs* de Supabase; si no, Supabase usa la
+   * Site URL del proyecto.
    */
   async register({
     email,
@@ -54,6 +61,7 @@ export class AuthService {
     const { data, error } = await this.supabase.auth.signUp({
       email,
       password,
+      options: { emailRedirectTo: `${this.frontendUrl}/login` },
     });
     if (error) {
       throw mapAuthError(error, 'No se pudo registrar el usuario');
