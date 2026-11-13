@@ -26,3 +26,6 @@ eslint.config.mjs
 .idea
 .DS_Store
 npm-debug.log*
+
+# Scripts y configuración del servidor: no van dentro de la imagen
+deploy
