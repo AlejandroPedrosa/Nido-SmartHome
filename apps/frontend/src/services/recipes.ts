@@ -4,13 +4,14 @@ import type {
   CookResult,
   CreateRecipePayload,
   RecipeDetail,
-  RecipeSummary,
+  RecipeListItem,
   UpdateRecipePayload,
 } from '@/types';
 
 export const recipesService = {
-  list(): Promise<RecipeSummary[]> {
-    return apiGet<RecipeSummary[]>('/recipes');
+  /** Cada receta incluye sus ingredientes (stock vs. requerido) y `can_cook`. */
+  list(): Promise<RecipeListItem[]> {
+    return apiGet<RecipeListItem[]>('/recipes');
   },
 
   available(): Promise<AvailableRecipe[]> {

@@ -43,6 +43,7 @@ export interface ProductContainer {
   name: string;
 }
 
+/** Producto con sus contenedores (GET /products y GET /products/:id, PR-01). */
 export interface ProductDetail extends Product {
   containers: ProductContainer[];
 }
@@ -58,6 +59,8 @@ export interface CreateProductPayload {
   current_stock?: number;
   min_stock?: number;
   reorder_quantity?: number | null;
+  /** Contenedores asignados, en la misma transacción que el alta (CT-01). */
+  container_ids?: string[];
 }
 
 export interface UpdateProductPayload {
@@ -66,6 +69,8 @@ export interface UpdateProductPayload {
   unit?: ProductUnit;
   min_stock?: number;
   reorder_quantity?: number | null;
+  /** Reemplaza los contenedores asignados (`[]` desvincula todos). */
+  container_ids?: string[];
 }
 
 export interface ProductQuery {
@@ -80,6 +85,8 @@ export interface Container {
   name: string;
   created_at: string;
   product_count: number;
+  /** Productos asignados bajo mínimo (RS-01): badge "N por reponer". */
+  low_stock_count: number;
 }
 
 export interface ContainerDetail extends Container {
@@ -105,6 +112,12 @@ export interface RecipeIngredient {
   quantity: number;
   current_stock: number;
   available: boolean;
+}
+
+/** Receta del listado con sus ingredientes y disponibilidad (RC-04, RC-UI-03). */
+export interface RecipeListItem extends RecipeSummary {
+  ingredients: RecipeIngredient[];
+  can_cook: boolean;
 }
 
 export interface RecipeDetail {

@@ -108,14 +108,6 @@ export const Containers: FC = () => {
     }
   };
 
-  /** Badge "N por reponer": solo cuando el detalle abierto coincide con la card (brecha listado). */
-  const lowStockForCard = (containerId: string): number | null => {
-    if (selected?.id !== containerId) return null;
-    return selected.products.filter(
-      (p) => p.stock_status === 'low_stock' || p.stock_status === 'out_of_stock',
-    ).length;
-  };
-
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex flex-col justify-between gap-4 border-b border-nido-border bg-nido-surface px-6 py-4 sm:flex-row sm:items-center lg:px-8">
@@ -169,7 +161,6 @@ export const Containers: FC = () => {
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {containers.map((container) => {
-              const lowStockCount = lowStockForCard(container.id);
               const isMenuOpen = openMenuId === container.id;
 
               return (
@@ -184,16 +175,18 @@ export const Containers: FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {lowStockCount !== null &&
-                          (lowStockCount > 0 ? (
-                            <span className="rounded-full bg-nido-terracotta-bg px-2.5 py-1 text-[11px] font-semibold text-nido-terracotta-text">
-                              {lowStockCount} por reponer
-                            </span>
-                          ) : (
+                        {/* Badge "N por reponer" (low_stock_count); "Al día" solo si tiene productos. */}
+                        {container.low_stock_count > 0 ? (
+                          <span className="rounded-full bg-nido-terracotta-bg px-2.5 py-1 text-[11px] font-semibold text-nido-terracotta-text">
+                            {container.low_stock_count} por reponer
+                          </span>
+                        ) : (
+                          container.product_count > 0 && (
                             <span className="rounded-full bg-nido-sage-bg px-2.5 py-1 text-[11px] font-semibold text-nido-sage-text">
                               Al día
                             </span>
-                          ))}
+                          )
+                        )}
 
                         <div className="relative">
                           <button

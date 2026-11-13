@@ -6,12 +6,13 @@ import type {
   CookResult,
   CreateRecipePayload,
   RecipeDetail,
-  RecipeSummary,
+  RecipeListItem,
   UpdateRecipePayload,
 } from '@/types';
 
 interface RecipesState {
-  recipes: RecipeSummary[];
+  /** Listado con ingredientes y `can_cook` (RC-UI-03). */
+  recipes: RecipeListItem[];
   available: AvailableRecipe[];
   selected: RecipeDetail | null;
   isLoading: boolean;
