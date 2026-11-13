@@ -120,11 +120,11 @@ CRUD de productos y consulta de existencias.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/products` | Listar productos del usuario (filtros opcionales: `category`, `name`, `low_stock`, `container_id`) |
+| GET | `/products` | Listar productos del usuario (filtros opcionales: `category`, `name`, `low_stock`, `container_id`). Cada producto incluye sus contenedores asignados (`containers: [{id, name}]`) |
 | GET | `/products/low-stock` | Productos con `current_stock < min_stock` |
-| GET | `/products/:id` | Producto por ID (solo si pertenece al usuario) |
-| POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional) |
-| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock) |
+| GET | `/products/:id` | Producto por ID (solo si pertenece al usuario), con sus contenedores asignados |
+| POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional). Acepta `container_ids` opcional: asigna los contenedores en la misma transacción (404 si alguno es ajeno) y responde con `containers` |
+| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno) |
 | DELETE | `/products/:id` | Eliminar producto (responde 409 si es insumo de receta existente; si no, purga producto e historial) |
 
 ---
@@ -143,7 +143,7 @@ Espacios físicos del hogar y asignación de inventario.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/containers` | Listar contenedores del usuario |
+| GET | `/containers` | Listar contenedores del usuario, con `product_count` y `low_stock_count` (productos asignados bajo mínimo, RS-01) |
 | GET | `/containers/:id` | Contenedor con sus productos asociados |
 | POST | `/containers` | Crear contenedor (valida nombre único insensible a mayúsculas por usuario) |
 | PATCH | `/containers/:id` | Actualizar contenedor |
@@ -168,7 +168,7 @@ Gestión de recetas culinarias, ingredientes vinculados al inventario y preparac
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/recipes` | Listar recetas del usuario |
+| GET | `/recipes` | Listar recetas del usuario, cada una con sus `ingredients` (`product_id`, `product_name`, `unit`, `quantity`, `current_stock`, `available`) y `can_cook` (RC-04), en una sola consulta |
 | GET | `/recipes/available` | Recetas cuyo stock cubre todos los ingredientes requeridos |
 | GET | `/recipes/:id` | Receta detallada con sus ingredientes |
 | POST | `/recipes` | Crear receta (exige al menos un ingrediente propio) |
@@ -215,8 +215,9 @@ Generación consolidada, sincronización y liquidación de listas de reposición
 |--------|------|-------------|
 | GET | `/shopping/lists` | Listar histórico de listas de compras del usuario |
 | GET | `/shopping/lists/:id` | Obtener lista detallada con sus ítems |
-| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados; responde array vacío si no hay faltantes) |
+| POST | `/shopping/lists/generate` | Generar o sincronizar la lista activa (elimina ítems normalizados). Sin faltantes responde array vacío, salvo que la activa conserve ítems comprados: en ese caso la devuelve |
 | PATCH | `/shopping/lists/:id/items/:productId` | Marcar o desmarcar un ítem como comprado (`purchased`) |
+| DELETE | `/shopping/lists/:id/items/:productId` | Quitar un ítem de la lista activa (204). Si la lista queda vacía se elimina; 409 si ya fue confirmada (regla LC-07) |
 | POST | `/shopping/lists/:id/purchase` | Confirmar compra de ítems marcados, sumar a stock y cerrar lista dentro de transacción |
 
 ---
@@ -316,7 +317,8 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | LC-03 | Una lista activa y depuración de ítems | Existe como máximo una lista abierta (`is_purchased = false`). La sincronización preserva los ítems marcados como comprados, actualiza faltantes y **elimina automáticamente los ítems no comprados cuyos productos ya no estén bajo el mínimo** (recompuestos por compra externa o ajuste) |
 | LC-04 | Confirmación única | Intentar confirmar una lista que ya posee `is_purchased = true` es rechazado dentro de la transacción con código HTTP 409 (Conflict) |
 | LC-05 | Ítems obligatorios al confirmar | Intentar confirmar una lista sin ningún ítem marcado como comprado (`purchased = true`) responde HTTP 400 (Bad Request) dentro de la transacción |
-| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa (o la elimina si queda vacía) y responde HTTP 200 con array vacío |
+| LC-06 | Sin faltantes | Si al invocar la generación no existen productos bajo mínimo, el sistema no crea listas vacías, depura ítems no comprados que hayan recuperado stock en la lista activa y responde HTTP 200. Si la lista activa queda vacía se elimina y la respuesta es un array vacío; si conserva ítems marcados como comprados, se devuelve la lista para que pueda confirmarse |
+| LC-07 | Quitar ítems | Un ítem puede quitarse de la lista activa mientras no esté confirmada (si ya lo está, HTTP 409). Quitarlo lo saca solo de esa lista: si el producto sigue bajo mínimo, la próxima sincronización lo vuelve a incluir (LC-03). Si la lista queda sin ítems, se elimina |
 
 ### 5.4 Recetas y consumo
 
@@ -439,7 +441,8 @@ graph TB
     end
 
     subgraph backend [Backend - AWS EC2]
-        NestJS[NestJS API REST]
+        Nginx[Nginx - TLS Let's Encrypt]
+        NestJS[NestJS API REST - Docker]
         AuthModule[Auth Module]
         ProductsModule[Products Module]
         ContainersModule[Containers Module]
@@ -455,7 +458,8 @@ graph TB
     end
 
     subgraph cicd [CI/CD]
-        GitHubActions[GitHub Actions]
+        GitHubActions[GitHub Actions - CI y deploy por SSH]
+        VercelGit[Integración Git de Vercel]
     end
 
     User --> Browser
@@ -463,7 +467,8 @@ graph TB
     React --> Vite
     React --> Tailwind
     React --> Zustand
-    React -->|HTTP/REST con Bearer JWT| NestJS
+    React -->|HTTPS/REST con Bearer JWT - nido-api.duckdns.org| Nginx
+    Nginx -->|Proxy a 127.0.0.1:3000| NestJS
 
     NestJS --> AuthModule
     NestJS --> ProductsModule
@@ -481,8 +486,8 @@ graph TB
     ShoppingModule -->|Transacciones ACID (pg)| DatabaseModule
     DatabaseModule -->|Pool pg (Conexión directa)| PostgreSQL
 
-    GitHubActions -->|Deploy automático| React
-    GitHubActions -->|Deploy automático| NestJS
+    VercelGit -->|Deploy automático de main| React
+    GitHubActions -->|Deploy por SSH tras CI verde en main| NestJS
 ```
 
 | Capa | Tecnología | Responsabilidad |
@@ -492,8 +497,8 @@ graph TB
 | API REST | NestJS, TypeScript | Lógica de negocio, autorización y validación |
 | Autenticación | Supabase Auth | Gestión de identidad, contraseñas y emisión de JWT |
 | Persistencia y Transacciones | Pool `pg` hacia PostgreSQL (Supabase Cloud) | Acceso a datos unificado, integridad referencial y transacciones ACID |
-| Hosting e Infraestructura | Vercel, AWS EC2 | Despliegue de cliente web y backend |
-| CI/CD | GitHub Actions | Automatización de pruebas y despliegue |
+| Hosting e Infraestructura | Vercel, AWS EC2 (Docker + Nginx), DuckDNS | Despliegue de cliente web y backend; HTTPS con Let's Encrypt |
+| CI/CD | GitHub Actions, integración Git de Vercel | CI en cada PR; desde `main`, deploy del backend por SSH y del frontend por Vercel |
 
 ---
 

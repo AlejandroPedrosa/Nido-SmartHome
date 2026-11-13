@@ -94,7 +94,12 @@ CREATE TABLE shopping_lists (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  is_purchased BOOLEAN NOT NULL DEFAULT FALSE
+  is_purchased BOOLEAN NOT NULL DEFAULT FALSE,
+  purchased_at TIMESTAMPTZ NULL,
+  CONSTRAINT shopping_lists_purchased_at_consistency CHECK (
+    (is_purchased = FALSE AND purchased_at IS NULL) OR
+    (is_purchased = TRUE AND purchased_at IS NOT NULL)
+  )
 );
 
 -- Items de la lista de compras
@@ -120,9 +125,21 @@ CREATE UNIQUE INDEX uq_recipes_user_name_ci
 CREATE UNIQUE INDEX shopping_lists_one_active_per_user
   ON shopping_lists (user_id)
   WHERE is_purchased = FALSE;
+
+-- Row Level Security sin policies: bloquea la API REST pública de Supabase
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE containers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_containers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recipe_ingredients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shopping_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shopping_list_items ENABLE ROW LEVEL SECURITY;
 ```
 
 `auth.users` la administra Supabase Auth. El esquema de la aplicación solo la referencia mediante foreign keys.
+
+Los cambios posteriores a la creación inicial se versionan en [`docs/database/migrations/`](database/migrations/) y se ejecutan en orden. `schema.sql` refleja siempre el estado final del esquema.
 
 ---
 
@@ -224,8 +241,11 @@ Encabezado de una lista de reposición. No posee nombre; se identifica mediante 
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño de la lista |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Fecha y hora de generación (UTC) |
 | `is_purchased` | BOOLEAN | NOT NULL, DEFAULT FALSE | `true` cuando la compra fue confirmada |
+| `purchased_at` | TIMESTAMPTZ | NULL, CHECK de consistencia | Fecha y hora de confirmación de la compra (UTC). `NULL` mientras la lista está activa |
 
 El índice único parcial `shopping_lists_one_active_per_user` garantiza que exista como máximo una lista abierta (`is_purchased = false`) por usuario.
+
+Restricción adicional: el check `shopping_lists_purchased_at_consistency` exige que `purchased_at` sea `NULL` si la lista está activa y no nulo si fue confirmada, evitando estados contradictorios.
 
 ### `shopping_list_items` — Ítems de la lista de compras
 
@@ -312,6 +332,7 @@ erDiagram
         uuid user_id FK
         timestamptz created_at
         boolean is_purchased
+        timestamptz purchased_at
     }
 
     shopping_list_items {
@@ -394,6 +415,8 @@ En base a la revisión técnica del diseño de datos previa a la codificación, 
 **Lógica transaccional en la API vs. Triggers.** La orquestación de transacciones complejas (descuento atómico de múltiples insumos al cocinar, liquidación de compras y control de concurrencia mediante `FOR UPDATE`) se implementa en los servicios de NestJS mediante un pool directo de Node-Postgres (`pg`). Esto garantiza trazabilidad, permite responder con códigos HTTP semánticos (400, 404, 409) y facilita las pruebas unitarias e integradas dentro del pipeline de CI/CD sin acoplar lógica a procedimientos almacenados en la base de datos.
 
 **Aislamiento multi-inquilino en la aplicación vs. RLS.** La API actúa como guardián estricto: toda consulta SQL generada por el backend incluye el predicado `WHERE user_id = $1`, donde el valor se extrae directamente del JWT validado por `SupabaseAuthGuard`. En las tablas pivote (`product_containers`, `recipe_ingredients`) y en `inventory_movements`, el servicio valida que las entidades vinculadas pertenezcan al usuario autenticado antes de persistir, respondiendo HTTP 404 ante inconsistencias para no revelar la existencia de recursos ajenos.
+
+**RLS habilitado sin policies (defensa en profundidad).** Supabase expone automáticamente las tablas del schema `public` mediante su API REST (`/rest/v1`), accesible con la *Publishable key*, que es pública por diseño. Para que el único camino hacia los datos sea la API NestJS, todas las tablas tienen Row Level Security habilitado **sin definir policies**: los roles `anon` y `authenticated` no pueden leer ni escribir ninguna fila. El backend se conecta con el rol `postgres` (dueño de las tablas, con `BYPASSRLS`), por lo que no se ve afectado. El aislamiento por usuario sigue siendo responsabilidad de la API, tal como se describe en el punto anterior. Aplicado mediante la migración [`001_enable_rls.sql`](database/migrations/001_enable_rls.sql).
 
 **Restricciones de unicidad case-insensitive.** Para evitar registros duplicados diferenciados únicamente por mayúsculas o espacios accidentales (ej. `"Fideos"` vs `"fideos"`), la unicidad por usuario en productos, contenedores y recetas se implementa mediante índices únicos sobre `(user_id, LOWER(TRIM(name)))`.
 

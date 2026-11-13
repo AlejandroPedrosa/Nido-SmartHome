@@ -1,0 +1,67 @@
+# ============================================================
+# NIDO SmartHome — CI del backend (NestJS)
+# Lint, formato, tipos, tests unitarios y build en cada PR y
+# push a develop / main que toque el backend.
+# ============================================================
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches: [develop, main]
+    paths:
+      - 'apps/backend/**'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+# Solo lectura del repositorio: el workflow no publica nada.
+permissions:
+  contents: read
+
+# Si llega un push nuevo a la misma rama/PR, cancela la ejecución anterior.
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js (versión de .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/backend/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formato (Prettier)
+        run: npm run format:check
+
+      - name: Tipos (TypeScript)
+        run: npm run typecheck
+
+      # Tests unitarios con mocks: no necesitan base de datos ni secretos.
+      - name: Tests unitarios
+        run: npm test -- --ci
+
+      - name: Build
+        run: npm run build

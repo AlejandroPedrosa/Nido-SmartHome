@@ -1,0 +1,4 @@
+.pnpm-store/
+
+# Configuración local de Claude Code (servidores de desarrollo)
+.claude/
