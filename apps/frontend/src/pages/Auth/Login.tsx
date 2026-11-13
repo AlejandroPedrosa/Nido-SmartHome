@@ -1,8 +1,9 @@
-import { useState, type FC, type FormEvent } from 'react';
+import { useEffect, useState, type FC, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { NidoLogo } from '@/components/ui/NidoLogo';
 import { ApiError } from '@/lib/api';
+import { clearAuthRedirectFromUrl, parseAuthRedirect } from '@/lib/auth-redirect';
 import { useAuthStore } from '@/stores/useAuthStore';
 
 export const Login: FC = () => {
@@ -12,10 +13,19 @@ export const Login: FC = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Resultado del link de confirmación de cuenta (Supabase redirige a /login).
+  const [confirmation] = useState(() =>
+    parseAuthRedirect(window.location.hash, window.location.search),
+  );
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/dashboard';
+
+  useEffect(() => {
+    // No dejar en la barra de direcciones los tokens ni los errores de Supabase.
+    if (confirmation) clearAuthRedirectFromUrl();
+  }, [confirmation]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -71,6 +81,26 @@ export const Login: FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {confirmation?.kind === 'confirmed' && !error && (
+              <div
+                role="status"
+                className="flex items-center gap-2 rounded-xl border border-nido-sage-text/20 bg-nido-sage-bg p-3 text-xs text-nido-sage-text"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>¡Cuenta confirmada! Ya podés iniciar sesión.</span>
+              </div>
+            )}
+
+            {confirmation?.kind === 'error' && !error && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-xl border border-nido-terracotta-border bg-nido-terracotta-bg p-3 text-xs text-nido-terracotta-text"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{confirmation.message}</span>
+              </div>
+            )}
+
             {error && (
               <div
                 role="alert"

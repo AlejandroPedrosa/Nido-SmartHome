@@ -64,6 +64,18 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   CORS_ORIGIN!: string;
+
+  /**
+   * URL base del frontend (sin rutas) para los links de los emails de
+   * Supabase, como la confirmación de cuenta. Opcional: si falta, se usa el
+   * primer origen de CORS_ORIGIN.
+   */
+  @IsOptional()
+  @IsUrl({ protocols: ['https', 'http'], require_tld: false })
+  @Matches(/^https?:\/\/[^/]+\/?$/, {
+    message: 'FRONTEND_URL debe ser la URL base del frontend, sin rutas',
+  })
+  FRONTEND_URL?: string;
 }
 
 export function validateEnv(

@@ -81,6 +81,23 @@ describe('validateEnv', () => {
     ).toThrow('SUPABASE_PUBLISHABLE_KEY');
   });
 
+  it('acepta FRONTEND_URL como opcional', () => {
+    expect(validateEnv(validEnv).FRONTEND_URL).toBeUndefined();
+    expect(
+      validateEnv({ ...validEnv, FRONTEND_URL: 'https://nido.vercel.app' })
+        .FRONTEND_URL,
+    ).toBe('https://nido.vercel.app');
+  });
+
+  it('rechaza un FRONTEND_URL con rutas', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        FRONTEND_URL: 'https://nido.vercel.app/login',
+      }),
+    ).toThrow('FRONTEND_URL debe ser la URL base del frontend, sin rutas');
+  });
+
   it('rechaza un PORT fuera de rango', () => {
     expect(() => validateEnv({ ...validEnv, PORT: '70000' })).toThrow('PORT');
   });
