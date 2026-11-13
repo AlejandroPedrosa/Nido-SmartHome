@@ -1,0 +1,70 @@
+# ============================================================
+# NIDO SmartHome — CD del backend (AWS EC2)
+# Cuando "Backend CI" termina en verde por un push a main, entra
+# por SSH a la instancia y ejecuta apps/backend/deploy/deploy.sh
+# (git pull + docker compose up --build + espera del healthcheck).
+# Después verifica /health por HTTPS desde afuera.
+#
+# Configuración en GitHub (Settings → Environments → production):
+#   Secrets:   EC2_HOST     host o IP pública (Elastic IP)
+#              EC2_USER     usuario SSH (ubuntu)
+#              EC2_SSH_KEY  clave privada dedicada al CD (ed25519)
+#              EC2_HOST_FINGERPRINT  huella SHA256 de la clave de host
+#   Variables: API_URL      URL pública de la API, sin barra final
+#                           (https://nido-api.duckdns.org)
+#
+# workflow_run solo se dispara con el archivo presente en la rama
+# por defecto (main).
+# ============================================================
+name: Backend Deploy
+
+on:
+  workflow_run:
+    workflows: [Backend CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un deploy a la vez; nunca se cancela uno en curso.
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy a EC2
+    # Solo tras una CI exitosa de un push (no de un PR) o a mano.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.API_URL }}
+
+    steps:
+      - name: Desplegar por SSH
+        # appleboy/ssh-action v1.2.5, fijado por commit.
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # Huella SHA256 de la clave de host: evita conectarse a un
+          # servidor suplantado. Ver README → Despliegue continuo.
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          command_timeout: 15m
+          # deploy.sh sale con error si algo falla: el job falla con él.
+          script: ~/Nido-SmartHome/apps/backend/deploy/deploy.sh
+
+      - name: Verificar /health por HTTPS
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          test -n "$API_URL" || { echo "Falta la variable API_URL"; exit 1; }
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$API_URL/health"
