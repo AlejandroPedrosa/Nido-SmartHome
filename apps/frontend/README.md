@@ -17,9 +17,11 @@ cp .env.example .env
 
 | Variable | Descripción | Local | Producción |
 |----------|-------------|-------|------------|
-| `VITE_API_URL` | URL base del backend NestJS (sin barra final) | `http://localhost:3000` | `https://api.<tu-dominio>` |
+| `VITE_API_URL` | URL base del backend NestJS (sin barra final) | `http://localhost:3000` | `https://nido-api.duckdns.org` |
 
-El backend debe permitir ese origen en `CORS_ORIGIN`.
+El backend debe permitir el origen del frontend en `CORS_ORIGIN`.
+
+El build de producción (`pnpm build`) **falla** si `VITE_API_URL` falta o no usa `https://` (se permite `localhost`, que usa la CI). Así un deploy sin la variable no queda apuntando en silencio a `http://localhost:3000`.
 
 ## Desarrollo
 
@@ -53,10 +55,13 @@ src/
 
 ## Despliegue en Vercel
 
-1. Crear un proyecto en Vercel con **Root Directory** = `apps/frontend`.
-2. Framework preset: Vite.
-3. Variable de entorno `VITE_API_URL` = URL HTTPS del backend (`https://api.<dominio>`).
-4. El archivo [`vercel.json`](vercel.json) reescribe las rutas SPA a `/index.html` para React Router.
-5. Tras el deploy, actualizar `CORS_ORIGIN` del backend con la URL de Vercel y reiniciar el contenedor en EC2.
+1. En Vercel, **Add New → Project** e importar el repositorio de GitHub.
+2. **Root Directory** = `apps/frontend`; **Framework preset**: Vite (build `pnpm build`, salida `dist`).
+3. **Environment Variables** → `VITE_API_URL` = `https://nido-api.duckdns.org` (entorno *Production*; también *Preview* si se usan deploys de PR).
+4. **Settings → Git → Production Branch** = `main`. Cada merge a `main` publica una versión; las otras ramas generan deploys de *Preview*.
+5. El archivo [`vercel.json`](vercel.json) reescribe las rutas SPA a `/index.html` para React Router (por ejemplo, `/login` al volver del email de confirmación).
+6. Con la URL final de Vercel (por ejemplo `https://nido-smarthome.vercel.app`):
+   * En el servidor, `CORS_ORIGIN` y `FRONTEND_URL` del `.env` del backend, y volver a ejecutar `deploy/deploy.sh`.
+   * En Supabase, *Authentication → URL Configuration*: **Site URL** = esa URL y **Redirect URLs** = esa URL con `/**` (además de `http://localhost:5173/**`).
 
-Checklist de humo post-deploy: registro, login, CRUD de productos/contenedores/recetas, cocinar, generar lista, confirmar compra, refresh de token y logout.
+Checklist de humo post-deploy (sin errores de CORS ni de contenido mixto en la consola del navegador): registro con confirmación por email (el link lleva a `/login` con "Cuenta confirmada"), login, refresh de token, CRUD de productos (con contenedores) y contenedores, recetas e indicador de stock, cocinar, generar lista, quitar un ítem, confirmar compra y logout.
