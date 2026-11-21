@@ -17,7 +17,7 @@ El proyecto se desarrolla inicialmente como un **Producto Mínimo Viable (MVP)**
 ## Entregables
 
 * **Informe Final (PDF):** [docs/informe-final.pdf](docs/informe-final.pdf)
-* **Video demo:** [Ver en YouTube](URL_DEL_VIDEO)
+* **Video demo:** [Ver en YouTube](https://www.youtube.com/watch?v=dNhLQ3jxpnk)
 * **Aplicación web:** [https://nido-smarthome-frontend.vercel.app](https://nido-smarthome-frontend.vercel.app)
 * **API REST:** [https://nido-api.duckdns.org](https://nido-api.duckdns.org)
 
