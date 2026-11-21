@@ -182,6 +182,7 @@ nido-smarthome/
 * [Script DDL (schema.sql)](docs/database/schema.sql)
 * [Módulos y Arquitectura](docs/modulos.md)
 * [Wireframes y Diseño de UI](docs/wireframes.md)
+* [Pruebas de reglas críticas](docs/pruebas-reglas-criticas.md)
 * [Frontend (variables y deploy)](apps/frontend/README.md)
 * [Backend (Docker / EC2)](apps/backend/README.md)
 
