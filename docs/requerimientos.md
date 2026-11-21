@@ -40,7 +40,7 @@ Este documento especifica los requerimientos funcionales, no funcionales y la ma
 | **RNF-05** | Rendimiento de la API | Los endpoints de consulta deben responder en menos de 300 ms en condiciones normales de red y carga. |
 | **RNF-06** | Usabilidad y Responsividad | La interfaz de usuario debe ser completamente adaptable (Responsive Web Design) para su uso fluido en teléfonos móviles y navegadores de escritorio. |
 | **RNF-07** | Compatibilidad | La aplicación web debe ser compatible con las últimas dos versiones estables de Chrome, Firefox, Edge y Safari. |
-| **RNF-08** | Disponibilidad y Hosting | El sistema mantendrá una disponibilidad objetivo del 99% en horario de operación activa, contemplando que en capas gratuitas de despliegue (frontend en Vercel, backend en AWS EC2/Render y base de datos en Supabase Cloud) pueden suscitarse latencias iniciales de arranque en frío (*cold starts*) de hasta 15-30 segundos tras periodos de inactividad. |
+| **RNF-08** | Disponibilidad y Hosting | El sistema mantendrá una disponibilidad objetivo del 99% en horario de operación activa, sobre infraestructura cloud de capa gratuita o inicial: frontend en Vercel, backend en AWS EC2 (contenedor Docker detrás de Nginx con HTTPS) y base de datos en Supabase Cloud. |
 
 ---
 
@@ -52,7 +52,7 @@ Esta matriz certifica qué Casos de Uso (CU) y Reglas de Negocio (especificados 
 |---|---|---|
 | **RF-01** (Registro y contenedores) | CU-01 | CT-02, MT-01, MT-02 |
 | **RF-02** (Autenticación y sesión) | CU-02, CU-03 | AT-01, AT-02, AT-03, MT-01, MT-02 |
-| **RF-03** (CRUD Productos) | CU-07 | UG-01, UN-01, UN-02, UN-03, RC-06, MT-01, MT-02, MT-03 |
+| **RF-03** (CRUD Productos) | CU-07 | UG-01, UN-01, UN-02, UN-03, UN-04, RC-06, MT-01, MT-02, MT-03 |
 | **RF-04** (Stock y umbrales) | CU-07 | RS-01, RS-02, RS-03 |
 | **RF-05** (CRUD Contenedores) | CU-08 | UG-01, CT-02, CT-03, MT-01, MT-02, MT-03 |
 | **RF-06** (Asignación producto-contenedor) | CU-08 | CT-01, CT-03, MT-02, MT-03 |

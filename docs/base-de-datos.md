@@ -155,7 +155,7 @@ Almacena cada producto que el usuario gestiona en su hogar. Es la tabla central 
 | `user_id` | UUID | FK → `auth.users(id)`, NOT NULL, ON DELETE CASCADE | Dueño del producto |
 | `name` | TEXT | NOT NULL | Nombre del producto (ej: "Fideos") |
 | `category` | TEXT | NULL | Categoría libre (ej: "Alimentos", "Limpieza"). No hay tabla de categorías |
-| `unit` | VARCHAR(20) | NOT NULL, DEFAULT `'unidad'`, CHECK | Unidad de medida (ver regla [UN-01](modulos.md#56-unidades-de-medida)): `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
+| `unit` | VARCHAR(20) | NOT NULL, DEFAULT `'unidad'`, CHECK | Unidad de medida (ver regla [UN-01](modulos.md#57-unidades-de-medida)): `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` |
 | `current_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Stock actual, expresado en `unit` |
 | `min_stock` | DECIMAL(10,2) | NOT NULL, DEFAULT 0, CHECK (`>= 0`) | Umbral mínimo para reposición, en la misma `unit` |
 | `reorder_quantity` | DECIMAL(10,2) | NULL, CHECK (`> 0`) | Cantidad fija de reposición. Si es NULL, se usa `min_stock - current_stock` |
@@ -214,7 +214,7 @@ Vincula una receta con productos del inventario e indica la cantidad requerida e
 | `product_id` | UUID | PK (compuesta), FK → `products(id)` ON DELETE RESTRICT | Insumo consumido |
 | `quantity` | DECIMAL(10,2) | NOT NULL, CHECK (`> 0`) | Cantidad requerida del ingrediente |
 
-La restricción `ON DELETE RESTRICT` y la regla [RC-06](modulos.md#53-recetas-y-consumo) impiden eliminar un producto si forma parte de una receta existente.
+La restricción `ON DELETE RESTRICT` y la regla [RC-06](modulos.md#54-recetas-y-consumo) impiden eliminar un producto si forma parte de una receta existente.
 
 ### `inventory_movements` — Movimientos de inventario
 
@@ -225,7 +225,7 @@ Auditoría inmutable de cambios de existencias. Cada mutación en `products.curr
 | `id` | UUID | PK, auto-generado | Identificador único del movimiento |
 | `product_id` | UUID | NOT NULL, FK → `products(id)` ON DELETE CASCADE | Producto auditado |
 | `quantity_change` | DECIMAL(10,2) | NOT NULL, CHECK (`!= 0`) | Cantidad (+ entrada, - salida) |
-| `type` | VARCHAR(20) | NOT NULL, CHECK | Tipo de movimiento (ver regla [AU-02](modulos.md#57-auditoría-de-movimientos)): `manual`, `recipe_consumption`, `shopping` |
+| `type` | VARCHAR(20) | NOT NULL, CHECK | Tipo de movimiento (ver regla [AU-02](modulos.md#58-auditoría-de-movimientos)): `manual`, `recipe_consumption`, `shopping` |
 | `reason` | TEXT | NULL | Motivo descriptivo opcional |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Timestamp exacto del cambio (UTC) |
 
@@ -420,7 +420,7 @@ En base a la revisión técnica del diseño de datos previa a la codificación, 
 
 **Restricciones de unicidad case-insensitive.** Para evitar registros duplicados diferenciados únicamente por mayúsculas o espacios accidentales (ej. `"Fideos"` vs `"fideos"`), la unicidad por usuario en productos, contenedores y recetas se implementa mediante índices únicos sobre `(user_id, LOWER(TRIM(name)))`.
 
-**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos. En contraposición, los productos asociados a recetas existentes están protegidos por `ON DELETE RESTRICT` (regla [RC-06](modulos.md#53-recetas-y-consumo)).
+**Auditoría y borrado en cascada.** `inventory_movements` mantiene `ON DELETE CASCADE` hacia `products`. Para el alcance de este MVP, la eliminación de un producto representa una decisión del usuario de purgar dicho elemento del hogar, por lo que su historial se remueve deliberadamente junto con el registro principal para evitar registros huérfanos. En contraposición, los productos asociados a recetas existentes están protegidos por `ON DELETE RESTRICT` (regla [RC-06](modulos.md#54-recetas-y-consumo)).
 
 **Zona horaria.** Todas las columnas temporales usan `TIMESTAMPTZ` para almacenar fecha y hora en UTC, garantizando independencia respecto a la zona horaria del servidor o de los clientes.
 

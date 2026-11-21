@@ -64,7 +64,7 @@ El diseño completo, flujos de usuario, estados de interacción y componentes in
 * **Componentes clave:**
   * Selector de pestañas / filtro rápido: "Todas las recetas" y "Disponibles para cocinar" (insumos cubiertos al 100%).
   * Botón "+ Nueva receta": formulario con nombre, porciones, instrucciones y selector dinámico de ingredientes propios con cantidades requeridas.
-  * Tarjetas de receta: visualización de porciones base, tiempo estimado, instrucciones paso a paso e indicador comparativo visual (Stock actual vs. Requerido por ingrediente).
+  * Tarjetas de receta: visualización de porciones base, instrucciones paso a paso e indicador comparativo visual (Stock actual vs. Requerido por ingrediente).
   * Botón de acción "Cocinar receta": abre modal de confirmación con detalle de insumos a descontar; ejecuta la transacción bajo bloqueo pesimista y muestra confirmación o error ante falta imprevista de existencias (HTTP 400).
   * Menú de gestión de receta: opciones para editar datos/ingredientes o **eliminar la receta** en cascada con diálogo de confirmación.
 
@@ -77,3 +77,12 @@ El diseño completo, flujos de usuario, estados de interacción y componentes in
   * Barra de progreso superior interactiva (ej. "3 de 8 productos comprados").
   * Botón "Confirmar compra": habilitado únicamente si existe al menos un ítem marcado (`purchased = true`); abre diálogo de liquidación que acredita el stock de los productos tildados, genera las auditorías de tipo `shopping` y archiva la lista.
   * Pestaña / Vista de historial: listado de listas cerradas con fecha de liquidación e insumos comprados.
+
+### 2.7 Configuración
+* **Trazabilidad:** Resuelve `RF-02` | `CU-03`.
+* **Objetivo:** Mostrar la cuenta con la que se inició sesión y permitir cerrarla de forma segura. Se accede desde el ítem "Configuración" del menú lateral (`/settings`, ruta protegida).
+* **Componentes clave:**
+  * Encabezado "Configuración" con subtítulo "Tu cuenta y sesión".
+  * Tarjeta de perfil: avatar con ícono y texto "Sesión iniciada como" seguido del correo del usuario autenticado (obtenido de `GET /auth/me` y guardado en `useAuthStore`).
+  * Botón "Cerrar sesión": invoca `POST /auth/logout`, limpia los tokens del cliente y redirige a `/login`.
+* **Fuera del alcance del MVP:** edición de perfil, cambio de contraseña y preferencias de la aplicación.
