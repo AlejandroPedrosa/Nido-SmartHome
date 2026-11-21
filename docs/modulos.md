@@ -29,7 +29,7 @@ nido-smarthome/
 ├── apps/
 │   ├── frontend/          # React + Vite
 │   │   ├── src/
-│   │   │   ├── components/    # Componentes reutilizables (shadcn/ui)
+│   │   │   ├── components/    # Componentes reutilizables propios (layout, auth, ui)
 │   │   │   ├── pages/         # Páginas/vistas
 │   │   │   ├── stores/        # Zustand stores
 │   │   │   ├── services/      # Clientes HTTP
@@ -124,7 +124,7 @@ CRUD de productos y consulta de existencias.
 | GET | `/products/low-stock` | Productos con `current_stock < min_stock` |
 | GET | `/products/:id` | Producto por ID (solo si pertenece al usuario), con sus contenedores asignados |
 | POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional). Acepta `container_ids` opcional: asigna los contenedores en la misma transacción (404 si alguno es ajeno) y responde con `containers` |
-| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno) |
+| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno). Cambiar la unidad no convierte las cantidades existentes (regla UN-04) |
 | DELETE | `/products/:id` | Eliminar producto (responde 409 si es insumo de receta existente; si no, purga producto e historial) |
 
 ---
@@ -287,6 +287,88 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | `useShoppingStore` | Lista de compras activa, ítems marcados e historial de listas |
 | `useInventoryStore` | Movimientos de auditoría y ejecución de ajustes manuales |
 
+### Diagrama de Páginas, Stores y Servicios
+
+El flujo de datos del cliente sigue tres capas: las **páginas** leen y disparan acciones sobre los **stores** de Zustand; cada store delega las llamadas HTTP en su **servicio** tipado; y todos los servicios usan el cliente Axios centralizado (`src/lib/api.ts`), que adjunta el `Bearer` JWT y renueva el token ante un HTTP 401. La única excepción es `Dashboard`, que consulta los servicios de forma directa para armar sus indicadores sin alterar el estado global de las otras vistas.
+
+```mermaid
+graph LR
+    subgraph paginas ["Páginas y layout"]
+        Login["Login / Register"]
+        Dashboard["Dashboard"]
+        Products["Products<br/>(ProductForm, ProductDetail, StockAdjuster)"]
+        Containers["Containers"]
+        Recipes["Recipes"]
+        ShoppingList["ShoppingList"]
+        Settings["Settings"]
+        Layout["AppLayout / ProtectedRoute / PublicRoute"]
+    end
+
+    subgraph stores ["Stores (Zustand)"]
+        AuthStore["useAuthStore"]
+        ProductsStore["useProductsStore"]
+        ContainersStore["useContainersStore"]
+        InventoryStore["useInventoryStore"]
+        RecipesStore["useRecipesStore"]
+        ShoppingStore["useShoppingStore"]
+    end
+
+    subgraph servicios ["Servicios HTTP"]
+        AuthSvc["authService"]
+        ProductsSvc["productsService"]
+        ContainersSvc["containersService"]
+        InventorySvc["inventoryService"]
+        RecipesSvc["recipesService"]
+        ShoppingSvc["shoppingService"]
+    end
+
+    Api["lib/api.ts<br/>(Axios + Bearer JWT + refresh)"]
+    Backend["API REST NestJS"]
+
+    Login --> AuthStore
+    Settings --> AuthStore
+    Layout --> AuthStore
+    Layout --> ShoppingStore
+    Dashboard --> ShoppingStore
+    Products --> ProductsStore
+    Products --> ContainersStore
+    Products --> InventoryStore
+    Containers --> ContainersStore
+    Containers --> ProductsStore
+    Recipes --> RecipesStore
+    Recipes --> ProductsStore
+    ShoppingList --> ShoppingStore
+
+    Dashboard -.->|"consulta directa"| ProductsSvc
+    Dashboard -.->|"consulta directa"| ContainersSvc
+    Dashboard -.->|"consulta directa"| InventorySvc
+    Dashboard -.->|"consulta directa"| RecipesSvc
+
+    AuthStore --> AuthSvc
+    ProductsStore --> ProductsSvc
+    ContainersStore --> ContainersSvc
+    InventoryStore --> InventorySvc
+    RecipesStore --> RecipesSvc
+    ShoppingStore --> ShoppingSvc
+
+    AuthSvc --> Api
+    ProductsSvc --> Api
+    ContainersSvc --> Api
+    InventorySvc --> Api
+    RecipesSvc --> Api
+    ShoppingSvc --> Api
+    Api -->|"HTTPS / REST"| Backend
+```
+
+| Servicio | Endpoints que consume | Usado por |
+|---|---|---|
+| `authService` | `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me` | `useAuthStore` |
+| `productsService` | `/products`, `/products/:id`, `/products/low-stock` | `useProductsStore`, `Dashboard` |
+| `containersService` | `/containers`, `/containers/:id`, `/containers/:id/products[/:productId]` | `useContainersStore`, `Dashboard` |
+| `inventoryService` | `/inventory/adjust`, `/inventory/movements[/:productId]` | `useInventoryStore`, `Dashboard` |
+| `recipesService` | `/recipes`, `/recipes/:id`, `/recipes/available`, `/recipes/:id/cook` | `useRecipesStore`, `Dashboard` |
+| `shoppingService` | `/shopping/lists`, `/shopping/lists/generate`, `/shopping/lists/:id`, `/shopping/lists/:id/items/:productId`, `/shopping/lists/:id/purchase` | `useShoppingStore` |
+
 ---
 
 ## 5. Reglas de negocio
@@ -354,6 +436,7 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | UN-01 | Valores permitidos | `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` (restringidos por `CHECK` en base de datos) |
 | UN-02 | Homogeneidad | Stock, mínimos, reposición e ingredientes se expresan en la misma unidad del producto; no se realizan conversiones intermedias en el MVP |
 | UN-03 | Unidad por defecto | Si no se especifica unidad en la creación, se guarda `'unidad'` |
+| UN-04 | Cambio de unidad con stock cargado | Editar la unidad (`PATCH /products/:id`) se considera la **corrección de un error de carga**: como no hay conversiones (UN-02), los valores numéricos existentes (`current_stock`, `min_stock`, `reorder_quantity` y las cantidades de `recipe_ingredients`) se conservan tal cual y pasan a leerse en la nueva unidad (500 g pasan a ser 500 kg). Por eso, si el producto ya tiene stock, el procedimiento definido es: (1) cambiar la unidad y, en la misma edición, reexpresar `min_stock` y `reorder_quantity`; (2) corregir el stock con un ajuste manual (RS-06), que queda registrado en la auditoría con su motivo (AU-01); (3) revisar las cantidades de las recetas que usan el producto. El historial de movimientos previos conserva la unidad con la que se registró. La conversión automática o el bloqueo del cambio cuando hay stock quedan como trabajo futuro |
 
 ### 5.8 Auditoría de movimientos
 
@@ -436,7 +519,7 @@ graph TB
     subgraph frontend [Frontend - Vercel]
         React[React 19 + TypeScript]
         Vite[Vite]
-        Tailwind[Tailwind CSS + shadcn/ui]
+        Tailwind[Tailwind CSS + componentes propios]
         Zustand[Zustand Stores]
     end
 
@@ -492,7 +575,7 @@ graph TB
 
 | Capa | Tecnología | Responsabilidad |
 |---|---|---|
-| Presentación | React 19, TypeScript, Tailwind, shadcn/ui | Formularios, vistas responsivas e interacción |
+| Presentación | React 19, TypeScript, Tailwind, React Router | Formularios, vistas responsivas e interacción |
 | Estado del cliente | Zustand | Almacenamiento reactivo y caché en cliente |
 | API REST | NestJS, TypeScript | Lógica de negocio, autorización y validación |
 | Autenticación | Supabase Auth | Gestión de identidad, contraseñas y emisión de JWT |

@@ -2,3 +2,4 @@
 
 # Configuración local de Claude Code (servidores de desarrollo)
 .claude/
+.DS_Store
