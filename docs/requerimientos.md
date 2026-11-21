@@ -52,7 +52,7 @@ Esta matriz certifica qué Casos de Uso (CU) y Reglas de Negocio (especificados 
 |---|---|---|
 | **RF-01** (Registro y contenedores) | CU-01 | CT-02, MT-01, MT-02 |
 | **RF-02** (Autenticación y sesión) | CU-02, CU-03 | AT-01, AT-02, AT-03, MT-01, MT-02 |
-| **RF-03** (CRUD Productos) | CU-07 | UG-01, UN-01, UN-02, UN-03, RC-06, MT-01, MT-02, MT-03 |
+| **RF-03** (CRUD Productos) | CU-07 | UG-01, UN-01, UN-02, UN-03, UN-04, RC-06, MT-01, MT-02, MT-03 |
 | **RF-04** (Stock y umbrales) | CU-07 | RS-01, RS-02, RS-03 |
 | **RF-05** (CRUD Contenedores) | CU-08 | UG-01, CT-02, CT-03, MT-01, MT-02, MT-03 |
 | **RF-06** (Asignación producto-contenedor) | CU-08 | CT-01, CT-03, MT-02, MT-03 |

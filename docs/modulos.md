@@ -124,7 +124,7 @@ CRUD de productos y consulta de existencias.
 | GET | `/products/low-stock` | Productos con `current_stock < min_stock` |
 | GET | `/products/:id` | Producto por ID (solo si pertenece al usuario), con sus contenedores asignados |
 | POST | `/products` | Crear producto (si `current_stock > 0`, registra movimiento inicial transaccional). Acepta `container_ids` opcional: asigna los contenedores en la misma transacción (404 si alguno es ajeno) y responde con `containers` |
-| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno) |
+| PATCH | `/products/:id` | Actualizar metadatos del producto (nombre, categoría, unidad, mínimos; no el stock). Con `container_ids` reemplaza las asignaciones en la misma transacción (`[]` desvincula todas; 404 si alguno es ajeno). Cambiar la unidad no convierte las cantidades existentes (regla UN-04) |
 | DELETE | `/products/:id` | Eliminar producto (responde 409 si es insumo de receta existente; si no, purga producto e historial) |
 
 ---
@@ -436,6 +436,7 @@ graph LR
 | UN-01 | Valores permitidos | `g`, `kg`, `ml`, `l`, `unidad`, `paquete`, `botella` (restringidos por `CHECK` en base de datos) |
 | UN-02 | Homogeneidad | Stock, mínimos, reposición e ingredientes se expresan en la misma unidad del producto; no se realizan conversiones intermedias en el MVP |
 | UN-03 | Unidad por defecto | Si no se especifica unidad en la creación, se guarda `'unidad'` |
+| UN-04 | Cambio de unidad con stock cargado | Editar la unidad (`PATCH /products/:id`) se considera la **corrección de un error de carga**: como no hay conversiones (UN-02), los valores numéricos existentes (`current_stock`, `min_stock`, `reorder_quantity` y las cantidades de `recipe_ingredients`) se conservan tal cual y pasan a leerse en la nueva unidad (500 g pasan a ser 500 kg). Por eso, si el producto ya tiene stock, el procedimiento definido es: (1) cambiar la unidad y, en la misma edición, reexpresar `min_stock` y `reorder_quantity`; (2) corregir el stock con un ajuste manual (RS-06), que queda registrado en la auditoría con su motivo (AU-01); (3) revisar las cantidades de las recetas que usan el producto. El historial de movimientos previos conserva la unidad con la que se registró. La conversión automática o el bloqueo del cambio cuando hay stock quedan como trabajo futuro |
 
 ### 5.8 Auditoría de movimientos
 
