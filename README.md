@@ -102,8 +102,9 @@ Para asegurar la estabilidad, el cumplimiento del cronograma académico y la sol
 * **Framework:** React 19
 * **Lenguaje:** TypeScript
 * **Tooling:** Vite
-* **Estilos y Componentes:** Tailwind CSS, shadcn/ui, Lucide Icons
+* **Estilos y Componentes:** Tailwind CSS, componentes UI propios (`src/components/ui`), Lucide Icons
 * **Gestión de Estado:** Zustand
+* **Ruteo y HTTP:** React Router, Axios
 
 ## Backend
 

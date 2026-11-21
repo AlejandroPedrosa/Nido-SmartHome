@@ -29,7 +29,7 @@ nido-smarthome/
 ├── apps/
 │   ├── frontend/          # React + Vite
 │   │   ├── src/
-│   │   │   ├── components/    # Componentes reutilizables (shadcn/ui)
+│   │   │   ├── components/    # Componentes reutilizables propios (layout, auth, ui)
 │   │   │   ├── pages/         # Páginas/vistas
 │   │   │   ├── stores/        # Zustand stores
 │   │   │   ├── services/      # Clientes HTTP
@@ -436,7 +436,7 @@ graph TB
     subgraph frontend [Frontend - Vercel]
         React[React 19 + TypeScript]
         Vite[Vite]
-        Tailwind[Tailwind CSS + shadcn/ui]
+        Tailwind[Tailwind CSS + componentes propios]
         Zustand[Zustand Stores]
     end
 
@@ -492,7 +492,7 @@ graph TB
 
 | Capa | Tecnología | Responsabilidad |
 |---|---|---|
-| Presentación | React 19, TypeScript, Tailwind, shadcn/ui | Formularios, vistas responsivas e interacción |
+| Presentación | React 19, TypeScript, Tailwind, React Router | Formularios, vistas responsivas e interacción |
 | Estado del cliente | Zustand | Almacenamiento reactivo y caché en cliente |
 | API REST | NestJS, TypeScript | Lógica de negocio, autorización y validación |
 | Autenticación | Supabase Auth | Gestión de identidad, contraseñas y emisión de JWT |
