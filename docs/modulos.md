@@ -287,6 +287,88 @@ El acceso a las rutas privadas (`/dashboard`, `/products`, `/containers`, `/reci
 | `useShoppingStore` | Lista de compras activa, ítems marcados e historial de listas |
 | `useInventoryStore` | Movimientos de auditoría y ejecución de ajustes manuales |
 
+### Diagrama de Páginas, Stores y Servicios
+
+El flujo de datos del cliente sigue tres capas: las **páginas** leen y disparan acciones sobre los **stores** de Zustand; cada store delega las llamadas HTTP en su **servicio** tipado; y todos los servicios usan el cliente Axios centralizado (`src/lib/api.ts`), que adjunta el `Bearer` JWT y renueva el token ante un HTTP 401. La única excepción es `Dashboard`, que consulta los servicios de forma directa para armar sus indicadores sin alterar el estado global de las otras vistas.
+
+```mermaid
+graph LR
+    subgraph paginas ["Páginas y layout"]
+        Login["Login / Register"]
+        Dashboard["Dashboard"]
+        Products["Products<br/>(ProductForm, ProductDetail, StockAdjuster)"]
+        Containers["Containers"]
+        Recipes["Recipes"]
+        ShoppingList["ShoppingList"]
+        Settings["Settings"]
+        Layout["AppLayout / ProtectedRoute / PublicRoute"]
+    end
+
+    subgraph stores ["Stores (Zustand)"]
+        AuthStore["useAuthStore"]
+        ProductsStore["useProductsStore"]
+        ContainersStore["useContainersStore"]
+        InventoryStore["useInventoryStore"]
+        RecipesStore["useRecipesStore"]
+        ShoppingStore["useShoppingStore"]
+    end
+
+    subgraph servicios ["Servicios HTTP"]
+        AuthSvc["authService"]
+        ProductsSvc["productsService"]
+        ContainersSvc["containersService"]
+        InventorySvc["inventoryService"]
+        RecipesSvc["recipesService"]
+        ShoppingSvc["shoppingService"]
+    end
+
+    Api["lib/api.ts<br/>(Axios + Bearer JWT + refresh)"]
+    Backend["API REST NestJS"]
+
+    Login --> AuthStore
+    Settings --> AuthStore
+    Layout --> AuthStore
+    Layout --> ShoppingStore
+    Dashboard --> ShoppingStore
+    Products --> ProductsStore
+    Products --> ContainersStore
+    Products --> InventoryStore
+    Containers --> ContainersStore
+    Containers --> ProductsStore
+    Recipes --> RecipesStore
+    Recipes --> ProductsStore
+    ShoppingList --> ShoppingStore
+
+    Dashboard -.->|"consulta directa"| ProductsSvc
+    Dashboard -.->|"consulta directa"| ContainersSvc
+    Dashboard -.->|"consulta directa"| InventorySvc
+    Dashboard -.->|"consulta directa"| RecipesSvc
+
+    AuthStore --> AuthSvc
+    ProductsStore --> ProductsSvc
+    ContainersStore --> ContainersSvc
+    InventoryStore --> InventorySvc
+    RecipesStore --> RecipesSvc
+    ShoppingStore --> ShoppingSvc
+
+    AuthSvc --> Api
+    ProductsSvc --> Api
+    ContainersSvc --> Api
+    InventorySvc --> Api
+    RecipesSvc --> Api
+    ShoppingSvc --> Api
+    Api -->|"HTTPS / REST"| Backend
+```
+
+| Servicio | Endpoints que consume | Usado por |
+|---|---|---|
+| `authService` | `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me` | `useAuthStore` |
+| `productsService` | `/products`, `/products/:id`, `/products/low-stock` | `useProductsStore`, `Dashboard` |
+| `containersService` | `/containers`, `/containers/:id`, `/containers/:id/products[/:productId]` | `useContainersStore`, `Dashboard` |
+| `inventoryService` | `/inventory/adjust`, `/inventory/movements[/:productId]` | `useInventoryStore`, `Dashboard` |
+| `recipesService` | `/recipes`, `/recipes/:id`, `/recipes/available`, `/recipes/:id/cook` | `useRecipesStore`, `Dashboard` |
+| `shoppingService` | `/shopping/lists`, `/shopping/lists/generate`, `/shopping/lists/:id`, `/shopping/lists/:id/items/:productId`, `/shopping/lists/:id/purchase` | `useShoppingStore` |
+
 ---
 
 ## 5. Reglas de negocio
