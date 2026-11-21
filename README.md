@@ -14,6 +14,13 @@ El sistema permite registrar productos en su unidad de medida real, controlar el
 
 El proyecto se desarrolla inicialmente como un **Producto Mínimo Viable (MVP)** centrado en la robustez de la lógica de negocio, consistencia transaccional y diseño adaptable.
 
+## Entregables
+
+* **Informe Final (PDF):** [docs/informe-final.pdf](docs/informe-final.pdf)
+* **Video demo:** [Ver en YouTube](URL_DEL_VIDEO)
+* **Aplicación web:** [https://nido-smarthome-frontend.vercel.app](https://nido-smarthome-frontend.vercel.app)
+* **API REST:** [https://nido-api.duckdns.org](https://nido-api.duckdns.org)
+
 ---
 
 ## Objetivo
@@ -188,9 +195,9 @@ nido-smarthome/
 | Backend | AWS EC2 + Docker + Nginx + HTTPS | [apps/backend/README.md](apps/backend/README.md) § Docker / EC2 |
 | Base de datos / Auth | Supabase Cloud (proyecto `nido`) | [apps/backend/README.md](apps/backend/README.md) |
 
-**URLs (completar al publicar):**
+**URLs de producción:**
 
-* Frontend: `https://<proyecto>.vercel.app`
-* API: `https://api.<dominio>`
+* Frontend: [https://nido-smarthome-frontend.vercel.app](https://nido-smarthome-frontend.vercel.app)
+* API: [https://nido-api.duckdns.org](https://nido-api.duckdns.org) (verificación de estado: [`/health`](https://nido-api.duckdns.org/health))
 
-Tras publicar el frontend, `CORS_ORIGIN` del backend debe incluir esa URL.
+`CORS_ORIGIN` del backend incluye la URL del frontend en Vercel.
