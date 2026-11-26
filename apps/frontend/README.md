@@ -60,7 +60,7 @@ src/
 3. **Environment Variables** → `VITE_API_URL` = `https://nido-api.duckdns.org` (entorno *Production*; también *Preview* si se usan deploys de PR).
 4. **Settings → Git → Production Branch** = `main`. Cada merge a `main` publica una versión; las otras ramas generan deploys de *Preview*.
 5. El archivo [`vercel.json`](vercel.json) reescribe las rutas SPA a `/index.html` para React Router (por ejemplo, `/login` al volver del email de confirmación).
-6. Con la URL final de Vercel (por ejemplo `https://nido-smarthome.vercel.app`):
+6. Con la URL final de Vercel (por ejemplo `https://nido-smarthome-frontend.vercel.app`):
    * En el servidor, `CORS_ORIGIN` y `FRONTEND_URL` del `.env` del backend, y volver a ejecutar `deploy/deploy.sh`.
    * En Supabase, *Authentication → URL Configuration*: **Site URL** = esa URL y **Redirect URLs** = esa URL con `/**` (además de `http://localhost:5173/**`).
 
