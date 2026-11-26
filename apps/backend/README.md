@@ -55,7 +55,7 @@ La API lee su configuración de un archivo `.env` en `apps/backend/`. Ese archiv
 | `SUPABASE_URL` | Sí | `https://<project-ref>.supabase.co` | Dashboard → *Project Settings* → *Data API* → *Project URL*. Solo la URL base, **sin** `/rest/v1` |
 | `SUPABASE_PUBLISHABLE_KEY` | Sí | `sb_publishable_...` | Dashboard → *Project Settings* → *API Keys* → *Publishable key* (reemplaza a la antigua clave `anon`) |
 | `CORS_ORIGIN` | Sí | `http://localhost:5173` | URL del frontend (Vite en local, dominio de Vercel en producción) |
-| `FRONTEND_URL` | No (default: primer origen de `CORS_ORIGIN`) | `https://nido-smarthome.vercel.app` | URL base del frontend para el link del email de confirmación de cuenta (redirige a `/login`). Ver *Emails de confirmación* |
+| `FRONTEND_URL` | No (default: primer origen de `CORS_ORIGIN`) | `https://nido-smarthome-frontend.vercel.app` | URL base del frontend para el link del email de confirmación de cuenta (redirige a `/login`). Ver *Emails de confirmación* |
 
 Notas de seguridad:
 
@@ -179,7 +179,7 @@ chmod 600 .env   # solo el usuario ubuntu puede leerlo
 
 En producción:
 
-* `CORS_ORIGIN` y `FRONTEND_URL`: la URL exacta del frontend en Vercel (por ejemplo `https://nido-smarthome.vercel.app`, sin barra final).
+* `CORS_ORIGIN` y `FRONTEND_URL`: la URL exacta del frontend en Vercel (por ejemplo `https://nido-smarthome-frontend.vercel.app`, sin barra final).
 * `NODE_ENV` y `PORT` los fija `docker-compose.yml`.
 
 [`deploy/deploy.sh`](deploy/deploy.sh) trae la última versión de `main`, ejecuta `docker compose up -d --build`, espera hasta 90 s a que el healthcheck marque la API como `healthy` (si no, muestra los logs y falla) y borra imágenes viejas. Verificar: `curl http://127.0.0.1:3000/health`.
